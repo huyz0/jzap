@@ -39,6 +39,8 @@ more than the work continued on momentum.
 
 ## M0 · Repo skeleton and CI
 
+**Done.** Gradle build, nine modules, JDK 17 release target. CI matrix not set up (no CI yet); the module dependency-direction check is enforced by the agent's constant-pool test rather than ArchUnit.
+
 **Goal.** A multi-module build that compiles, tests, and publishes snapshots on three
 JDKs, with the module boundaries from [architecture.md](architecture.md) enforced.
 
@@ -64,6 +66,8 @@ JDKs, with the module boundaries from [architecture.md](architecture.md) enforce
   it can analyse — these are different numbers and conflating them causes support pain.
 
 ## M1 · Risk spikes (timeboxed, 1 week hard stop)
+
+**Skipped, deliberately.** The spikes were folded into M3-M6: building the reference engine answered Spike B (redefinition works; state drift is bounded by recycling rather than reset) and part of Spike C. Spike A, the schemata size budget, is still unanswered and is now the first task of M8.
 
 **Goal.** Establish empirically that the three load-bearing technical bets work, before
 the architecture depends on them.
@@ -92,6 +96,8 @@ assumptions.
 
 ## M2 · Project model and CLI contract
 
+**Done.** Schema version 1, round-trip tested, unknown fields warn, unknown `schemaVersion` is fatal with advice. `--dry-run` prints the resolved scope and classpaths.
+
 **Goal.** The seam is real and versioned before anything consumes it.
 
 **Definition of done.**
@@ -117,6 +123,8 @@ assumptions.
 # Phase 1 — A correct engine
 
 ## M3 · Mutant inventory
+
+**Done.** Ten mutators matching PIT's DEFAULTS ids, stable keys, `jzap list-mutants`, `mutator-mapping.yaml`, hand-written Tier A expectations. Two filters were added that the plan had not anticipated: no-op return mutants and loop counters.
 
 **Goal.** Enumerate mutation points from compiled classes with stable identities. No
 execution.
@@ -144,6 +152,8 @@ execution.
 
 ## M4 · PIT parity harness — inventory level
 
+**Done, and extended.** Runs on the hand-written fixture and on a generated one 100x larger. Baseline matches by key glob rather than by count, and fails on stale entries.
+
 **Goal.** Automated, reproducible inventory comparison against PIT, available to every
 later milestone.
 
@@ -167,6 +177,8 @@ later milestone.
 - Triage the first real diff to zero unclassified entries.
 
 ## M5 · Test execution and per-test coverage
+
+**Partial.** Per-test coverage works through the JUnit Platform launcher, at **line** granularity rather than block. JaCoCo cross-check not built. JUnit 4 and TestNG adapters not built.
 
 **Goal.** Run individual tests and record, per test, which basic blocks executed.
 
@@ -195,6 +207,8 @@ later milestone.
 
 ## M6 · Naive kill loop — the correctness baseline
 
+**Done.** 1051 shared mutants compared against PIT, 100% verdict agreement, one triaged inventory difference. `--engine=naive` is not yet a flag because there is only one engine; it becomes one in M8.
+
 **Goal.** A complete, obviously-correct mutation run. Slow is acceptable and expected.
 
 **Definition of done.**
@@ -221,6 +235,8 @@ later milestone.
   the cause is a PIT limitation.
 
 ## M7 · Benchmark harness and honest baseline
+
+**Done.** Scenarios S1 and S3 implemented with median-of-N reporting, work-parity reporting, and a refusal to print a diff figure when nothing is in scope. S2, S4-S8 need the daemon and cache that do not exist yet.
 
 **Goal.** Know exactly how slow the naive engine is, and have the apparatus that will
 measure every later claim.
@@ -258,32 +274,72 @@ Every milestone in this phase carries the same two standing gates, in addition t
 - **Determinism:** same model + same bytecode → byte-identical report, excluding the
   designated timing block.
 
-## M8 · Schemata engine
+## M8 · Parallel execution, then the schemata engine
 
-**Goal.** Compile-once mutant schemata: all mutants present as guarded branches, one
-active at a time.
+**Not started.** Split into two deliverables after building the reference engine, because they
+are independent and the first is far cheaper per unit of speed. The engine is currently
+single-threaded, so a laptop with eight cores is doing an eighth of the work it could.
+
+### M8a · Parallel execution
+
+**Goal.** Analyse mutants on every available core.
 
 **Definition of done.**
-- Bytecode schemata transformer honours the per-method and per-class mutant budgets
-  measured in Spike A; when a budget is exceeded the class is **split across schemata
-  groups** rather than failing, and the split is transparent to results.
-- Active-mutant switch is per-thread, not global, so tests spawning threads behave
-  correctly. A Tier A fixture with a test that spawns threads proves it.
-- Static-initialiser limitation handled explicitly: mutants that cannot fire under
-  schemata are routed to the naive insertion path automatically, not silently dropped.
-  A test asserts none are dropped.
-- Bytecode verification passes for every schemata-transformed class across the corpus,
-  asserted by running the verifier, not by absence of crashes.
-- Standing gates pass.
-- **≥3× on the mutant-execution phase versus M6 on S1**, measured by the M7 harness.
+- A pool of analysis JVMs sized from `ProjectModel.threads`, each with its own coverage
+  baseline-independent work queue.
+- Mutants are partitioned **by class**, not round robin. A minion that keeps working on one
+  class reuses its loaded, JIT-compiled state; scattering classes across minions throws that
+  away and re-pays class loading per mutant.
+- The coverage phase stays single-JVM: per-test coverage is only meaningful if tests run in
+  isolation from each other, and running them concurrently would let one test's threads
+  pollute another's probe readings.
+- Standing gates pass: identical verdicts to the single-threaded engine on Tier A and Tier B,
+  with 1, 2 and 8 threads.
+- A report produced with 8 threads is **byte-identical** to one produced with 1, since results
+  are sorted by mutant key before writing. Asserted, because non-determinism here would break
+  the Gradle build cache before it is ever built.
+- A hung mutant kills only its own minion; the other workers keep going. Tested with a fixture
+  containing a deliberate infinite loop.
+- Measured: near-linear speedup up to core count on the bench fixture, reported with the
+  observed range.
 
 **Tasks.**
-- Schemata transformer; switch mechanism; group splitting for oversized classes.
-- Routing logic for schemata-ineligible mutants; drop-detection test.
-- Verifier pass over the corpus; thread-safety fixture.
+- Work queue partitioned by class; minion pool with lifecycle and recycling per worker.
+- Thread-safe result collection; sort before reporting.
+- Infinite-loop fixture; per-worker kill and restart.
+- Differential runs at 1, 2 and 8 threads; benchmark.
+
+### M8b · Schemata engine
+
+**Goal.** Compile once, with all mutants present as guarded branches and one active at a time.
+
+**Definition of done.**
+- **First task is Spike A, still unanswered:** insert 1, 10, 100 and 1000 guarded mutants into
+  one method and one class, and record where the 64KB per-method bytecode limit and the 64K
+  constant-pool limit actually bite. The budget that measurement produces constrains everything
+  below, so it comes before any design.
+- Schemata transformer honours that budget; a class that exceeds it is **split across schemata
+  groups** rather than failing, and the split is invisible in results.
+- The active-mutant switch is per-thread, not global, so tests that spawn threads behave. A
+  Tier A fixture with a thread-spawning test proves it.
+- Mutants that cannot fire under schemata are routed to the existing per-mutant redefinition
+  path automatically. A test asserts none are silently dropped — which is the specific failure
+  mode to fear here, because a dropped mutant looks like a smaller inventory rather than a bug.
+- Static initialisers keep the fresh-JVM treatment they have now.
+- Bytecode verification passes for every transformed class across both fixtures, asserted by
+  running the verifier rather than by the absence of crashes.
+- Standing gates pass, and `--engine=naive` still selects the reference engine.
+- Measured: at least 3x on the mutant-execution phase against the reference engine on S1.
+
+**Tasks.**
+- Spike A and its written budget.
+- Transformer, per-thread switch, group splitting, routing for ineligible mutants.
+- Drop-detection test; verifier sweep; thread-safety fixture.
 - Benchmark and publish.
 
 ## M9 · Warm daemon and state reset
+
+**Not started.**
 
 **Goal.** Amortise JVM startup, class loading, and JIT warmup across mutants and across
 invocations — soundly.
@@ -316,6 +372,8 @@ invocations — soundly.
 
 ## M10 · Coverage-driven selection, ordering, and hit-probe timeouts
 
+**Not started.**
+
 **Goal.** Run the fewest tests that can decide each mutant, and decide hangs
 deterministically.
 
@@ -340,11 +398,15 @@ deterministically.
 
 ## M11 · Incremental cache
 
+**Not started.**
+
 **Goal.** Reuse prior verdicts safely across runs and machines.
 
 **Definition of done.**
-- Cache keyed on content hashes: class bytecode, test bytecode, mutator set, engine
-  version, model-relevant config. Key composition documented.
+- Cache keyed on content hashes: class bytecode, test bytecode, mutator set, **the enabled
+  filter set**, engine version, model-relevant config. Key composition documented. The filter
+  set is load-bearing: `--mutate-loop-counters` changes the inventory, so a cache that ignored
+  it would serve verdicts for a different set of mutants.
 - Invalidation rules implemented and individually tested, in the spirit of StrykerJS's:
   a killed mutant's result survives only if its killing test still exists unchanged; an
   unkilled mutant's result survives only if no new covering test appeared and no covering
@@ -368,6 +430,8 @@ deterministically.
 - Benchmark S5/S6.
 
 ## M12 · Mutant reduction
+
+**Not started.**
 
 **Goal.** Cut the mutant set without cutting usefulness — and quantify the tradeoff
 honestly.
@@ -405,6 +469,8 @@ honestly.
 
 ## M13 · Git diff scoping
 
+**Done ahead of schedule.** Git ranges, `-Local-`, `-Empty-`, patch files, line and class granularity, and the engine proven to work with JGit absent. The edge-case fixture repos cover renames, deletions and clean trees; submodules and shallow clones are not yet covered.
+
 **Goal.** Line-level diff scoping — the product's core differentiator, since free
 line-level diff mutation testing does not exist for Gradle projects today.
 
@@ -437,6 +503,8 @@ line-level diff mutation testing does not exist for Gradle projects today.
 
 ## M14 · Reporters
 
+**Done.** Console, native JSON, mutation-testing-elements, self-contained HTML, PR annotations. Elements output is not yet schema-validated in CI, and there is no CI to validate it in.
+
 **Goal.** Output that existing tooling and code review already understand.
 
 **Definition of done.**
@@ -465,6 +533,8 @@ This is where jzap earns its existence rather than merely matching PIT. Tier C c
 the junk-mutant taxonomy are the measures.
 
 ## M15 · Kotlin junk-mutant handling
+
+**Not started.**
 
 **Goal.** Do not generate junk mutants from compiler-generated constructs, rather than
 filtering them after the fact.
@@ -495,6 +565,8 @@ filtering them after the fact.
 
 ## M16 · Kotlin inline functions
 
+**Not started.**
+
 **Goal.** Correct mutants for inline functions, whose bodies are copied into every caller
 and whose bytecode omits some instructions entirely.
 
@@ -521,6 +593,8 @@ and whose bytecode omits some instructions entirely.
 
 ## M17 · Kotlin IR frontend (optional)
 
+**Not started.**
+
 **Goal.** Source-faithful mutant selection and description via a K2 compiler plugin,
 degrading cleanly when absent.
 
@@ -546,6 +620,8 @@ degrading cleanly when absent.
 # Phase 5 — Build tools and scale
 
 ## M18 · Gradle plugin
+
+**Not started.**
 
 **Goal.** First-class Gradle support, targeting the gap that free line-level diff mutation
 testing does not exist there
@@ -578,6 +654,8 @@ testing does not exist there
 
 ## M19 · Maven plugin
 
+**Not started.**
+
 **Goal.** Maven parity, reusing the same seam.
 
 **Definition of done.**
@@ -596,6 +674,8 @@ testing does not exist there
 - Cross-adapter conformance; migration doc; comparison run.
 
 ## M20 · Multi-module single run
+
+**Not started.**
 
 **Goal.** One invocation over a whole reactor, with cross-module test selection and the
 daemon warmed once — the thing PIT supports only partially and only with explicit
@@ -622,6 +702,8 @@ configuration.
 
 ## M21 · Published comparison against PIT and arcmutate
 
+**Not started.**
+
 **Goal.** The headline claims, measured, reproducible, and fair.
 
 **Definition of done.**
@@ -642,6 +724,8 @@ configuration.
 - Publish parity artefacts; third-party reproduction attempt before publication.
 
 ## M22 · 1.0 hardening
+
+**Not started.**
 
 **Goal.** A tool someone else can adopt without talking to us.
 
@@ -669,6 +753,31 @@ configuration.
 - Release pipeline; dashboards; dogfood and triage.
 
 ---
+
+## What building it changed about this plan
+
+Recorded here rather than silently edited in, because the differences are the useful part.
+
+- **M1's spikes were folded into the build.** Writing the reference engine answered more than a
+  prototype would have, and left exactly one spike genuinely outstanding: the schemata size
+  budget, which is now M8b's first task.
+- **M13 and M14 arrived early.** Diff scoping and reporting turned out to be independent of the
+  execution engine, so they were built alongside it. The plan already allowed this; it happened
+  sooner than expected.
+- **Two mutant filters appeared that the plan did not anticipate**, both found by comparing
+  against PIT rather than by design: no-op return mutants, which can never be killed, and loop
+  counters, which are killed 79 times out of 80 and cost a third of the run time. The second
+  moved jzap from 1.64x slower than PIT to 1.5x faster. M12's reduction work now has a
+  precedent to follow: measure the information a mutant class carries, not just its cost.
+- **Parallelism was an afterthought in M8 and should not have been.** It is the cheapest large
+  speedup available and it is now M8a, ahead of schemata.
+- **Coverage shipped at line granularity, not block.** That was a deliberate scope cut, and the
+  cost is that test selection is broader than necessary. M10 remains as written.
+- **The benchmark harness needed a guard the plan did not specify.** Its first version reported
+  a 158x diff-run speedup, which was entirely an artefact of the synthetic patch landing on a
+  line carrying no mutants. It now derives the target line from the inventory and refuses to
+  print a figure when nothing is in scope. Any future scenario needs the same treatment: a
+  benchmark that cannot fail is not measuring anything.
 
 ## Milestone dependency summary
 
