@@ -40,3 +40,47 @@ val writeFixtureDescriptor = tasks.register("writeFixtureDescriptor") {
         descriptor.get().asFile.writeText(text)
     }
 }
+
+/**
+ * Writes a jzap project model for this fixture.
+ *
+ * A stand-in for the Gradle adapter of M18, and a demonstration of how small that adapter is:
+ * its whole job is to turn what the build already knows into the one document the engine reads.
+ */
+tasks.register("writeProjectModel") {
+    val mainClasses = sourceSets["main"].output.classesDirs
+    val testClasses = sourceSets["test"].output.classesDirs
+    val testRuntime = sourceSets["test"].runtimeClasspath
+    val sourceRoot = layout.projectDirectory.dir("src/main/java")
+    val model = rootProject.layout.buildDirectory.file("fixture-model.json")
+
+    dependsOn(tasks.named("classes"), tasks.named("testClasses"))
+    inputs.files(mainClasses, testClasses, testRuntime)
+    outputs.file(model)
+
+    doLast {
+        fun json(files: Iterable<File>) = files.joinToString(", ") { "\"${it.absolutePath}\"" }
+        model.get().asFile.parentFile.mkdirs()
+        model.get().asFile.writeText(
+            """
+            {
+              "schemaVersion": 1,
+              "modules": [
+                {
+                  "id": ":fixtures:sample-java",
+                  "mutableCodePaths": [${json(mainClasses)}],
+                  "sourceRoots": [${json(listOf(sourceRoot.asFile))}],
+                  "testClassPaths": [${json(testClasses)}],
+                  "testClasspath": [${json(testRuntime.files)}],
+                  "jvmArgs": ["-Xmx512m"]
+                }
+              ],
+              "scope": { "kind": "ALL", "granularity": "line" },
+              "reporters": ["console", "json", "elements", "html", "annotations"],
+              "threads": 1
+            }
+            """.trimIndent() + "\n"
+        )
+        logger.lifecycle("wrote ${model.get().asFile}")
+    }
+}

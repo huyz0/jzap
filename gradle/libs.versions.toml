@@ -7,6 +7,7 @@ jgit = "7.7.1.202607240634-r"
 picocli = "4.7.7"
 pitest = "1.30.0"
 pitestJunit5 = "1.2.3"
+slf4j = "2.0.17"
 
 [libraries]
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
@@ -19,6 +20,7 @@ junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api", version.re
 junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
 jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
 pitest = { module = "org.pitest:pitest", version.ref = "pitest" }
 pitest-entry = { module = "org.pitest:pitest-entry", version.ref = "pitest" }

@@ -15,10 +15,11 @@ including the measured timings.
 ## Try it
 
 ```bash
-./gradlew :jzap-cli:installDist :fixtures:sample-java:writeFixtureDescriptor
+./gradlew :jzap-cli:installDist :fixtures:sample-java:writeProjectModel
 ```
 
-Then point it at a project model, which a build-tool adapter normally produces:
+Then point it at a project model, which a build-tool adapter normally produces — here the
+fixture's own build writes one:
 
 ```bash
 ./jzap-cli/build/install/jzap/bin/jzap run -m build/fixture-model.json -o build/reports/jzap
