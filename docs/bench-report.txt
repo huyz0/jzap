@@ -6,19 +6,41 @@ Fixture: 1 code path(s), generated bench classes
 Compilation is excluded; both tools analyse the same prebuilt classes.
 
 S1  full run
-  jzap (engine: naive)                 20.00s   (range 19.71-20.29s, n=3)
-  PIT                                  30.17s   (range 30.13-30.50s, n=3)
-  jzap is 1.51x faster than PIT here
+  jzap (engine: naive)                 18.75s   (range 18.51-18.85s, n=3)
+  PIT                                  28.89s   (range 28.87-29.04s, n=3)
+  jzap is 1.54x faster than PIT here
   Work parity: jzap analysed 40 more mutants than PIT (3.8%), so the ratio is conservative.
+
+S1b thread scaling (20 cores available)
+  jzap, 1 thread(s)                    18.76s   (range 18.50-18.91s, n=3)    1.00x vs 1 thread
+  jzap, 2 thread(s)                    12.06s   (range 12.06-12.16s, n=3)    1.56x vs 1 thread
+  jzap, 4 thread(s)                     8.64s   (range 8.51-8.65s, n=3)    2.17x vs 1 thread
+  jzap, 20 thread(s)                    6.64s   (range 6.41-6.67s, n=3)    2.83x vs 1 thread
+  fastest at 20 thread(s), 4.35x PIT
+  Scaling is sublinear because the coverage phase is serial and this fixture
+  has only 40 classes: work is partitioned by class, so beyond a handful of
+  workers each one pays JVM startup for very little work.
 
 S3  diff run, one changed line
   target: bench/Unit0.java line 22, 6 mutants in scope of 1080 total
-  jzap (patch-scoped)                   1.71s   (range 1.69-1.74s, n=3)
-  11.7x faster than its own full run
+  jzap (patch-scoped)                   1.61s   (range 1.60-1.65s, n=3)
+  11.6x faster than its own full run
   Not compared against PIT: PIT's free scoping works at changed-file
   granularity and needs a git repository, so it would be doing a different
   amount of work. Line-level scoping in the PIT ecosystem is arcmutate's,
   which is commercial and unmeasured here.
+
+S5  re-run with no changes, cache warm
+  jzap                                  0.42s   (range 0.41-0.42s, n=3)
+  2.2% of a full run; 44.6x faster
+
+S6  re-run after one class was recompiled
+  jzap                                  1.95s   (range 1.91-1.95s, n=3)
+  4.6x the no-change run, and still 9.6x faster than a full run
+  The cache is restored to its pre-change state before each repetition, so
+  every measured run is genuinely the first one after the change.
+  The change is to a method no test covers, so no verdict moves: what this
+  measures is how much the cache invalidates, not what it recomputes.
 
 Mutants and verdicts
   jzap full: 1080 mutants  {'KILLED': 835, 'NO_COVERAGE': 120, 'SURVIVED': 125}

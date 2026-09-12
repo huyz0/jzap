@@ -23,6 +23,7 @@ plugins {
 jzap {
     threads = 4
     threshold = 80
+    cacheDir = layout.buildDirectory.dir("jzap-cache")   // optional, off by default
 }
 ```
 
@@ -74,6 +75,7 @@ compiled code; nothing is checked out.
 
 ```bash
 jzap run           -m model.json [--from REF --to REF | --patch FILE] [--scope line|class]
+                   [--threads N] [--cache-dir DIR] [--threshold PERCENT]
 jzap list-mutants  -m model.json          # the inventory, without running a single test
 jzap mutators                             # the available mutators
 jzap run -m model.json --dry-run          # resolved scope and classpaths, then stop

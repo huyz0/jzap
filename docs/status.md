@@ -106,13 +106,24 @@ bench fixture (40 classes, 200 tests, ~1080 mutants) on a developer machine:
 
 | Scenario | jzap | PIT |
 |---|---|---|
-| Full run | 20.0s (19.7-20.3) | 30.2s (30.1-30.5) |
+| Full run, one thread | 19.0s | 28.9s |
+| Full run, 20 threads | 6.6s | not comparable (PIT pinned to one thread) |
 | Diff run, one changed line, 6 mutants in scope | 1.6s | not comparable |
+| Re-run with no changes, cache warm | 0.42s | no equivalent |
+| Re-run after one class recompiled | 1.95s | no equivalent |
 
-That is 1.51x faster than PIT while analysing 40 *more* mutants (3.8%), so the ratio is
-conservative rather than flattered. Repeat runs of the whole harness landed between 1.51x and
-1.57x, which is the honest width of this measurement on a machine that is also doing other
-things. It is also not the interesting number: the engine here is the
+At one thread that is 1.5x faster than PIT while analysing 40 *more* mutants (3.8%), so the
+ratio is conservative rather than flattered. Across repeated runs of the harness the single-thread
+ratio landed between 1.5x and 1.6x, which is the honest width of this measurement on a machine
+that is also doing other things.
+
+Thread scaling is sublinear -- 1.00x, 1.58x, 2.20x, 2.85x at 1, 2, 4 and 20 threads -- because
+the coverage phase is serial and the fixture has only 40 classes, so beyond a handful of workers
+each one pays JVM startup for very little work.
+
+Re-running after one recompiled class costs 4.6x a no-change run because any change to any class
+invalidates the whole coverage map. That is deliberate: a changed production class can alter
+which lines its callers reach, so invalidating only that class's coverage would be unsound. It is also not the interesting number: the engine here is the
 deliberately slow reference implementation, with no schemata, no warm daemon, no cache and no
 parallelism. The diff run is 12x faster than jzap's own full run, which is the figure the
 product is actually about.
@@ -120,7 +131,13 @@ product is actually about.
 PIT is not timed on the diff scenario because its free scoping works at changed-*file*
 granularity and needs a git repository, so it would be doing a different amount of work.
 Line-level scoping in the PIT ecosystem is arcmutate's, which is commercial and unmeasured
-here.
+here. The same is true of the cache scenarios: PIT has a history file, but it does not cache the
+coverage map, so the comparison would not be like for like.
+
+**On the plan's kill criteria.** The full-run criterion (>=2x PIT) is met: 4.4x at 20 threads,
+1.5x at one. The diff-run criterion (>=5x PIT on a warm PR-sized run) cannot be evaluated as
+written, because PIT's free tier has no line-level diff mode to compare against and arcmutate's
+is unmeasured. Against jzap's own full run, a warm diff run is 45x faster.
 
 The absolute numbers are machine-specific: this was run on a developer machine, not an
 isolated bench host, which is exactly the caveat docs/parity-and-benchmarks.md requires before

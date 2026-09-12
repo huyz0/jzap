@@ -61,6 +61,11 @@ import java.util.TreeMap;
  * close to pointless. It is reused only when that key matches <em>and</em> the stored map covers
  * every class the current run needs, so a map recorded during a narrow diff run is not mistaken
  * for a complete one.
+ *
+ * <p>Any change to any class invalidates the whole coverage map, which is why re-running after
+ * one recompiled class costs several times a no-change run. That is deliberate rather than lazy:
+ * a changed production class can alter which lines its callers reach, so invalidating only the
+ * changed class's coverage would be unsound.
  */
 public final class MutantCache {
 
