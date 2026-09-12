@@ -1,0 +1,35 @@
+# Accepted differences between jzap and PIT, each with its justification.
+#
+# Classification, per docs/parity-and-benchmarks.md section 4:
+#   A - jzap bug            must be fixed, never baselined
+#   B - PIT limitation      documented, with a Tier A fixture proving jzap right
+#   C - intentional         a deliberate semantic difference
+#   D - nondeterminism      flaky test in the project under test
+#
+# Entries are matched by mutant-key glob, not counted. CI fails on any difference no entry
+# covers, and also on any entry that no longer matches anything: that means behaviour moved
+# and nobody noticed.
+
+fixture: fixtures/sample-java
+
+inventory:
+  - key: "*::FALSE_RETURNS#*"
+    classification: C
+    note: >
+      jzap applies both boolean return mutators to every boolean-returning method. PIT omits
+      FALSE_RETURNS where the returned value comes from a comparison, applying only
+      TRUE_RETURNS there. Established empirically rather than assumed, by running each PIT
+      mutator alone over a probe class with five boolean-returning shapes: PIT's FALSE_RETURNS
+      fired on a field read, a constant true and a boxed value, but not on `return x == 0`;
+      its TRUE_RETURNS fired on the comparison. Both tools correctly suppress the no-op case
+      of replacing a value with the value already returned.
+
+      jzap keeps the extra mutant because it is a real and distinct fault: on
+      sample.Discount::isFree it is KILLED by the existing suite, and it is not equivalent to
+      any other mutant jzap seeds there (NEGATE_CONDITIONALS yields `!=`, TRUE_RETURNS yields
+      a constant true). An always-false guard is a mistake a developer makes. The hand-written
+      expectation in jzap-e2e asserts this mutant must die, independently of what either tool
+      reports.
+
+verdicts:
+  # No accepted verdict differences. The two tools agree on every shared mutant.

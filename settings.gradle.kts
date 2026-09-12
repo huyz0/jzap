@@ -19,3 +19,6 @@ include(
 )
 
 include("fixtures:sample-java")
+include("fixtures:bench-java")
+include("tools:parity")
+include("tools:bench")

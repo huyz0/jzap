@@ -1,0 +1,36 @@
+==============================================================================
+jzap vs PIT, same classes, same ten mutators, one thread, same JDK
+==============================================================================
+
+Fixture: 1 code path(s), generated bench classes
+Compilation is excluded; both tools analyse the same prebuilt classes.
+
+S1  full run
+  jzap (engine: naive)                 20.00s   (range 19.71-20.29s, n=3)
+  PIT                                  30.17s   (range 30.13-30.50s, n=3)
+  jzap is 1.51x faster than PIT here
+  Work parity: jzap analysed 40 more mutants than PIT (3.8%), so the ratio is conservative.
+
+S3  diff run, one changed line
+  target: bench/Unit0.java line 22, 6 mutants in scope of 1080 total
+  jzap (patch-scoped)                   1.71s   (range 1.69-1.74s, n=3)
+  11.7x faster than its own full run
+  Not compared against PIT: PIT's free scoping works at changed-file
+  granularity and needs a git repository, so it would be doing a different
+  amount of work. Line-level scoping in the PIT ecosystem is arcmutate's,
+  which is commercial and unmeasured here.
+
+Mutants and verdicts
+  jzap full: 1080 mutants  {'KILLED': 835, 'NO_COVERAGE': 120, 'SURVIVED': 125}
+  PIT  full: 1040 mutants  {'KILLED': 795, 'NO_COVERAGE': 120, 'SURVIVED': 125}
+  jzap diff:    6 mutants  {'KILLED': 4, 'SURVIVED': 2}
+
+Caveats, stated because a timing without them is not usable:
+  - Run on a developer machine, not an isolated bench host. Treat the ratio as
+    indicative and the absolute numbers as machine-specific.
+  - jzap's engine here is the deliberately slow reference implementation: one
+    mutant at a time, one thread, no schemata, no warm daemon, no cache. Those
+    are M8-M11 in docs/delivery-plan.md.
+  - PIT runs multi-process by default; both were pinned to one thread.
+  - Mutant counts differ slightly by design; see tools/parity for the exact,
+    triaged inventory difference.

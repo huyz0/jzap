@@ -63,6 +63,12 @@ public final class EmptyReturnsMutator extends ReturnValueMutator {
     }
 
     @Override
+    protected boolean wouldBeNoOp(int opcode, Object constant) {
+        // The only empty value javac can have just pushed as a constant is the empty string.
+        return opcode == Opcodes.LDC && "".equals(constant);
+    }
+
+    @Override
     protected void pushReplacement(MethodVisitor mv, Type returnType) {
         String internal = returnType.getInternalName();
         if (internal.equals("java/lang/String")) {

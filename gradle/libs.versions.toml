@@ -5,6 +5,8 @@ junit = "5.14.0"
 junitPlatform = "1.14.0"
 jgit = "7.7.1.202607240634-r"
 picocli = "4.7.7"
+pitest = "1.30.0"
+pitestJunit5 = "1.2.3"
 
 [libraries]
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
@@ -18,3 +20,7 @@ junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", vers
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
 jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
 picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+pitest = { module = "org.pitest:pitest", version.ref = "pitest" }
+pitest-entry = { module = "org.pitest:pitest-entry", version.ref = "pitest" }
+pitest-command-line = { module = "org.pitest:pitest-command-line", version.ref = "pitest" }
+pitest-junit5-plugin = { module = "org.pitest:pitest-junit5-plugin", version.ref = "pitestJunit5" }

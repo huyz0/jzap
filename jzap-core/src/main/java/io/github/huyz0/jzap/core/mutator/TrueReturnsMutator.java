@@ -25,6 +25,11 @@ public final class TrueReturnsMutator extends ReturnValueMutator {
     }
 
     @Override
+    protected boolean wouldBeNoOp(int opcode, Object constant) {
+        return opcode == Opcodes.ICONST_1;   // the method already returns true here
+    }
+
+    @Override
     protected void pushReplacement(MethodVisitor mv, Type returnType) {
         mv.visitInsn(Opcodes.ICONST_1);
     }

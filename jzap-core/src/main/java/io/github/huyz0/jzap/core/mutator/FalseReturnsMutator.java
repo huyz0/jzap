@@ -25,6 +25,11 @@ public final class FalseReturnsMutator extends ReturnValueMutator {
     }
 
     @Override
+    protected boolean wouldBeNoOp(int opcode, Object constant) {
+        return opcode == Opcodes.ICONST_0;   // the method already returns false here
+    }
+
+    @Override
     protected void pushReplacement(MethodVisitor mv, Type returnType) {
         mv.visitInsn(Opcodes.ICONST_0);
     }

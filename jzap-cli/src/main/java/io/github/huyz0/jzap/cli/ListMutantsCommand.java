@@ -45,7 +45,9 @@ final class ListMutantsCommand implements Callable<Integer> {
             return RunCommand.EXIT_USAGE;
         }
 
-        MutationEngine engine = new MutationEngine(Mutators.resolve(model.scope().mutators()));
+        MutationEngine engine = new MutationEngine(
+                Mutators.resolve(model.scope().mutators()),
+                model.scope().isFilterEnabled(io.github.huyz0.jzap.core.LoopCounterFilter.ID));
         List<Mutant> mutants = new ArrayList<>();
         for (ModuleModel module : model.modules()) {
             List<ClassBytes> classes = new ClassScanner(

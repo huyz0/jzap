@@ -119,8 +119,9 @@ public final class AnalysisEngine {
 
         private final ModuleModel module;
         private final ChangedLines changed;
-        private final MutationEngine mutation =
-                new MutationEngine(Mutators.resolve(model.scope().mutators()));
+        private final MutationEngine mutation = new MutationEngine(
+                Mutators.resolve(model.scope().mutators()),
+                model.scope().isFilterEnabled(LoopCounterFilter.ID));
 
         final List<Mutant> results = new ArrayList<>();
         final List<String> failingBaselineTests = new ArrayList<>();

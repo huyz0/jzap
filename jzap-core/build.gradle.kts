@@ -2,6 +2,7 @@ dependencies {
     api(project(":jzap-model"))
     api(project(":jzap-wire"))
     implementation(libs.asm)
+    implementation(libs.asm.tree)
     implementation(libs.asm.commons)
     implementation(libs.asm.util)
 

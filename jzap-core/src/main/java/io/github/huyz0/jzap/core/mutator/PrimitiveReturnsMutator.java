@@ -33,6 +33,22 @@ public final class PrimitiveReturnsMutator extends ReturnValueMutator {
     }
 
     @Override
+    protected boolean wouldBeNoOp(int opcode, Object constant) {
+        return switch (returnTypeZeroOpcode(opcode)) {
+            case 1 -> true;
+            default -> false;
+        };
+    }
+
+    /** 1 when the preceding instruction already pushed a zero of some numeric type. */
+    private static int returnTypeZeroOpcode(int opcode) {
+        return switch (opcode) {
+            case Opcodes.ICONST_0, Opcodes.LCONST_0, Opcodes.FCONST_0, Opcodes.DCONST_0 -> 1;
+            default -> 0;
+        };
+    }
+
+    @Override
     protected void pushReplacement(MethodVisitor mv, Type returnType) {
         switch (returnType.getSort()) {
             case Type.LONG -> mv.visitInsn(Opcodes.LCONST_0);

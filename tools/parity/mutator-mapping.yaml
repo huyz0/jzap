@@ -1,0 +1,73 @@
+# jzap mutator <-> PIT mutator equivalence classes.
+#
+# Every entry is one of: equivalent, broader, narrower, no-equivalent. A no-equivalent entry
+# must carry a justification, and mutants in a no-equivalent class are excluded from verdict
+# comparison and reported separately as inventory-only differences.
+#
+# Required by docs/parity-and-benchmarks.md section 3. Without this table, comparison would be
+# guesswork about which mutants correspond.
+
+mappings:
+  - jzap: CONDITIONALS_BOUNDARY
+    pit: [org.pitest.mutationtest.engine.gregor.mutators.ConditionalsBoundaryMutator]
+    relation: equivalent
+
+  - jzap: INCREMENTS
+    pit: [org.pitest.mutationtest.engine.gregor.mutators.IncrementsMutator]
+    relation: equivalent
+    note: >
+      Both tools suppress increments that drive a loop. PIT does this by default; jzap does it
+      through LoopCounterFilter, which can be switched off with --mutate-loop-counters.
+      PIT's behaviour was established by running its INCREMENTS mutator alone over a probe
+      class containing a for loop, a while loop, an indexed loop and a standalone `value++`:
+      only the standalone increment produced a mutant.
+
+      jzap originally seeded these. On the generated bench fixture that produced 80 extra
+      mutants of which 79 were killed, and the ones inside `for (int i = 1; i < 4; i++)` ran
+      to integer wraparound -- roughly two billion iterations -- before dying. Near-zero
+      information at a large cost, so the filter matches PIT.
+
+  - jzap: INVERT_NEGS
+    pit: [org.pitest.mutationtest.engine.gregor.mutators.InvertNegsMutator]
+    relation: equivalent
+
+  - jzap: MATH
+    pit: [org.pitest.mutationtest.engine.gregor.mutators.MathMutator]
+    relation: equivalent
+
+  - jzap: NEGATE_CONDITIONALS
+    pit: [org.pitest.mutationtest.engine.gregor.mutators.NegateConditionalsMutator]
+    relation: equivalent
+
+  - jzap: VOID_METHOD_CALLS
+    pit: [org.pitest.mutationtest.engine.gregor.mutators.VoidMethodCallMutator]
+    relation: equivalent
+
+  - jzap: TRUE_RETURNS
+    pit: [org.pitest.mutationtest.engine.gregor.mutators.returns.BooleanTrueReturnValsMutator]
+    relation: equivalent
+
+  - jzap: FALSE_RETURNS
+    pit: [org.pitest.mutationtest.engine.gregor.mutators.returns.BooleanFalseReturnValsMutator]
+    relation: equivalent
+
+  - jzap: PRIMITIVE_RETURNS
+    pit: [org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator]
+    relation: equivalent
+
+  - jzap: EMPTY_RETURNS
+    pit: [org.pitest.mutationtest.engine.gregor.mutators.returns.EmptyObjectReturnValsMutator]
+    relation: narrower
+    note: >
+      jzap mutates only reference types with an unambiguous empty form (String, Optional,
+      the java.util collection interfaces, Stream, boxed numerics, Boolean). PIT's mutator
+      covers the same ground but its notion of an empty value for other types differs, so
+      inventory differences on unusual return types are expected here.
+
+unmapped_pit:
+  - pit: org.pitest.mutationtest.engine.gregor.mutators.NullReturnValsMutator
+    relation: no-equivalent
+    note: >
+      PIT's NULL_RETURNS is not in its DEFAULTS set and jzap does not implement it. Returning
+      null from an arbitrary method produces noisy mutants that a reviewer routinely dismisses;
+      it is deliberately left out of the default set on both sides.

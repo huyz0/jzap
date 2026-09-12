@@ -2,6 +2,8 @@
 
 An ultra-fast, diff-aware mutation testing tool for Java and Kotlin.
 
+- [status.md](status.md) — what works today, what is measured, what is not built yet.
+
 - [prior-art.md](prior-art.md) — research notes: the existing JVM tool landscape, where
   PIT spends its time, how other ecosystems do delta/diff runs, and which speed
   techniques are worth building on.
@@ -12,5 +14,6 @@ An ultra-fast, diff-aware mutation testing tool for Java and Kotlin.
 - [parity-and-benchmarks.md](parity-and-benchmarks.md) — the PIT differential-correctness
   and performance harness: corpus, mutant normalisation, agreement matrix, triage
   discipline, benchmark scenarios and fairness rules.
+- [bench-report.txt](bench-report.txt) — the most recent benchmark output, verbatim.
 - [adr/](adr/) — decision records.
   - [ADR 0001](adr/0001-implementation-language.md) — Java for the engine, not Rust.

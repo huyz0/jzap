@@ -8,7 +8,9 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Discovers mutants in a class and produces the bytecode for one of them.
@@ -21,9 +23,19 @@ import java.util.List;
 public final class MutationEngine {
 
     private final List<Mutator> mutators;
+    private final boolean filterLoopCounters;
 
     public MutationEngine(List<Mutator> mutators) {
+        this(mutators, true);
+    }
+
+    /**
+     * @param filterLoopCounters suppress INCREMENTS mutants on loop counters. On by default;
+     *                           see {@link LoopCounterFilter} for the measurements behind that.
+     */
+    public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters) {
         this.mutators = List.copyOf(mutators);
+        this.filterLoopCounters = filterLoopCounters;
     }
 
     public static MutationEngine withDefaults() {
@@ -35,7 +47,7 @@ public final class MutationEngine {
         ClassReader reader = new ClassReader(classBytes);
         MutationContext ctx = MutationContext.collecting(moduleId, binaryName(reader));
         reader.accept(new MutatingClassVisitor(null, ctx, mutators), ClassReader.EXPAND_FRAMES);
-        return ctx.collected();
+        return filter(ctx.collected(), classBytes);
     }
 
     /**
@@ -45,6 +57,30 @@ public final class MutationEngine {
      *                               does not match this bytecode — a cache or staleness bug
      *                               rather than a user error
      */
+    /**
+     * Drops filtered mutants after collection rather than during it, so ordinals are assigned
+     * identically in both phases and {@link #apply} can still find any key discovery returned.
+     */
+    private List<Mutant> filter(List<Mutant> discovered, byte[] classBytes) {
+        if (!filterLoopCounters) {
+            return discovered;
+        }
+        Set<LoopCounterFilter.Position> suppressed = LoopCounterFilter.loopCounterPositions(classBytes);
+        if (suppressed.isEmpty()) {
+            return discovered;
+        }
+        List<Mutant> kept = new ArrayList<>(discovered.size());
+        for (Mutant m : discovered) {
+            boolean isLoopCounter = m.key().mutator().equals(io.github.huyz0.jzap.core.mutator.IncrementsMutator.ID)
+                    && suppressed.contains(new LoopCounterFilter.Position(
+                            m.key().methodName(), m.key().descriptor(), m.key().line(), m.key().ordinal()));
+            if (!isLoopCounter) {
+                kept.add(m);
+            }
+        }
+        return kept;
+    }
+
     public byte[] apply(byte[] classBytes, MutantKey key) {
         ClassReader reader = new ClassReader(classBytes);
         // COMPUTE_MAXS is sufficient: no mutator alters control flow, so the frames recorded

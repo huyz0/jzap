@@ -49,6 +49,12 @@ final class ModelOptions {
             description = "Never mutate classes matching these globs.")
     List<String> exclude;
 
+    @Option(names = "--mutate-loop-counters",
+            description = "Also mutate loop counters. Off by default: negating a loop counter "
+                    + "either hangs the test or crashes it immediately, so the mutant dies for "
+                    + "a reason unrelated to what the test checks.")
+    boolean mutateLoopCounters;
+
     ProjectModel read() {
         if (!Files.isRegularFile(modelFile)) {
             throw new IllegalArgumentException("no project model at " + modelFile.toAbsolutePath()
@@ -77,6 +83,9 @@ final class ModelOptions {
                 patchFile != null ? patchFile.toString() : fromModel.patchFile(),
                 include != null ? include : fromModel.includeClasses(),
                 exclude != null ? exclude : fromModel.excludeClasses(),
-                mutators != null ? mutators : fromModel.mutators());
+                mutators != null ? mutators : fromModel.mutators(),
+                mutateLoopCounters
+                        ? List.of(io.github.huyz0.jzap.core.LoopCounterFilter.ID)
+                        : fromModel.disabledFilters());
     }
 }

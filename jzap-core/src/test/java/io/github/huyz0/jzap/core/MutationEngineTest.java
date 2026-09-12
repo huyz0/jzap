@@ -70,7 +70,9 @@ class MutationEngineTest {
         assertEquals(Set.of("MATH", "PRIMITIVE_RETURNS"), byMethod.get("add"));
         assertEquals(Set.of("CONDITIONALS_BOUNDARY", "NEGATE_CONDITIONALS", "TRUE_RETURNS", "FALSE_RETURNS"),
                 byMethod.get("isPositive"));
-        assertEquals(Set.of("CONDITIONALS_BOUNDARY", "NEGATE_CONDITIONALS", "INCREMENTS", "MATH",
+        // No INCREMENTS: the loop counter is suppressed by default, matching PIT. See
+        // LoopCounterFilterTest for why, and for the switch that turns it back on.
+        assertEquals(Set.of("CONDITIONALS_BOUNDARY", "NEGATE_CONDITIONALS", "MATH",
                 "PRIMITIVE_RETURNS"), byMethod.get("countTo"));
         assertEquals(Set.of("EMPTY_RETURNS"), byMethod.get("label"));
         assertEquals(Set.of("VOID_METHOD_CALLS"), byMethod.get("reset"));
@@ -182,5 +184,66 @@ class MutationEngineTest {
         List<String> keys = mutants.stream().map(m -> m.key().asString()).toList();
         assertEquals(keys.size(), keys.stream().collect(Collectors.toSet()).size(),
                 "duplicate mutant keys: " + keys);
+    }
+
+    private static final String BOOLS_SOURCE = """
+            package ex;
+            public class Bools {
+                private final boolean flag;
+                public Bools(boolean f) { flag = f; }
+                public boolean plain() { return flag; }
+                public boolean cmp(int x) { return x == 0; }
+                public boolean alwaysTrue() { return true; }
+                public boolean alwaysFalse() { return false; }
+                public String emptyAlready() { return ""; }
+                public int zeroAlready() { return 0; }
+            }
+            """;
+
+    /**
+     * A mutant that replaces a value with the value already there cannot be killed by any test,
+     * so it would be reported as surviving forever. Suppressing it is not an optimisation; it
+     * removes a permanent false alarm from every report.
+     */
+    @Test
+    void doesNotCreateMutantsThatChangeNothing() {
+        byte[] bytes = InMemoryJavac.compile("ex.Bools", BOOLS_SOURCE).get("ex.Bools");
+        List<Mutant> mutants = MutationEngine.withDefaults().discover(":test", bytes);
+
+        Map<String, Set<String>> byMethod = new LinkedHashMap<>();
+        for (Mutant m : mutants) {
+            byMethod.computeIfAbsent(m.key().methodName(), k -> new TreeSet<>()).add(m.key().mutator());
+        }
+
+        assertFalse(byMethod.getOrDefault("alwaysTrue", Set.of()).contains("TRUE_RETURNS"),
+                "returning true from a method that already returns true changes nothing");
+        assertFalse(byMethod.getOrDefault("alwaysFalse", Set.of()).contains("FALSE_RETURNS"),
+                "returning false from a method that already returns false changes nothing");
+        assertFalse(byMethod.getOrDefault("emptyAlready", Set.of()).contains("EMPTY_RETURNS"),
+                "returning \"\" from a method that already returns \"\" changes nothing");
+        assertFalse(byMethod.getOrDefault("zeroAlready", Set.of()).contains("PRIMITIVE_RETURNS"),
+                "returning 0 from a method that already returns 0 changes nothing");
+
+        // The opposite mutation on each of those methods is still a real change, and the
+        // mutators still apply normally where the value is not a known constant.
+        assertTrue(byMethod.get("alwaysTrue").contains("FALSE_RETURNS"));
+        assertTrue(byMethod.get("alwaysFalse").contains("TRUE_RETURNS"));
+        // plain() returns a field assigned in the constructor, so javac cannot fold it to a
+        // constant and both boolean mutants are genuine changes.
+        assertTrue(byMethod.get("plain").containsAll(Set.of("TRUE_RETURNS", "FALSE_RETURNS")));
+        assertTrue(byMethod.get("cmp").containsAll(Set.of("TRUE_RETURNS", "FALSE_RETURNS")));
+    }
+
+    @Test
+    void suppressedNoOpMutantsStayConsistentBetweenDiscoveryAndApplication() {
+        byte[] original = InMemoryJavac.compile("ex.Bools", BOOLS_SOURCE).get("ex.Bools");
+        MutationEngine engine = MutationEngine.withDefaults();
+
+        // If suppression happened in one phase but not the other, ordinals would drift and
+        // apply() would either fail or seed the wrong mutant. Applying every discovered key is
+        // the check for that.
+        for (Mutant m : engine.discover(":test", original)) {
+            engine.apply(original, m.key());
+        }
     }
 }
