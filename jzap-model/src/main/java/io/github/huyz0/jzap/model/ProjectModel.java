@@ -68,6 +68,11 @@ public record ProjectModel(
                 timeoutFactor, timeoutConstMillis, maxMutantsPerMinion);
     }
 
+    public ProjectModel withCache(CacheConfig newCache) {
+        return new ProjectModel(schemaVersion, modules, scope, newCache, reporters, threads,
+                timeoutFactor, timeoutConstMillis, maxMutantsPerMinion);
+    }
+
     public ProjectModel withThreads(int newThreads) {
         return new ProjectModel(schemaVersion, modules, scope, cache, reporters, newThreads,
                 timeoutFactor, timeoutConstMillis, maxMutantsPerMinion);

@@ -38,6 +38,18 @@ version independent of the plugin's, declares its inputs and outputs so Gradle c
 is configuration-cache compatible. The conformance test asserts the model it writes drives the
 engine unaided, which is also how a user reproduces a plugin problem without Gradle in the loop.
 
+**An incremental cache**, opt-in with `--cache-dir` or `jzap { cacheDir = ... }`. It caches both
+verdicts and the per-test coverage map. A killed mutant's verdict is reused when its killing test
+still covers it and that test's class is unchanged; an unkilled mutant's only when the covering
+set is identical and every covering test's class is unchanged. Timeouts and run errors are never
+stored, because a wall-clock timeout is not reproducible and reusing one would report a guess as
+a result. The cache records the toolchain that wrote it and refuses to be read under a different
+one, since bytecode differs between javac versions and platforms. The file is plain text in
+sorted sections, so a diff of it shows what changed.
+
+Opt-in rather than on by default: a cache whose whole question is whether reuse is sound should
+not start reusing without being asked.
+
 **Parallel execution.** Mutants are partitioned by class across a pool of analysis JVMs, so a
 worker keeps its classes loaded and JIT-warmed rather than re-paying startup per mutant. Verdicts
 and report bytes are asserted identical at 1, 2 and 8 threads, because thread count leaking into
@@ -125,7 +137,6 @@ differentially tested against.
 | Mutant schemata (compile once, all mutants as guarded branches) | M8b |
 | Warm daemon with in-JVM mutant switching and static-state reset | M9 |
 | Block-granularity coverage, kill-test-first ordering, hit-probe timeouts | M10 |
-| Incremental result cache | M11 |
 | Arid-node suppression, one-per-line, TCE dedup, extreme mutation | M12 |
 | Kotlin junk-mutant handling and inline functions | M15, M16 |
 | Maven plugin | M19 |

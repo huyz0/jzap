@@ -12,13 +12,23 @@ import java.util.Map;
 public final class ProbeIndex {
 
     private final Map<String, Integer> ids = new LinkedHashMap<>();
+    private final Map<Integer, String> locations = new LinkedHashMap<>();
 
     private static String key(String className, int line) {
         return className + ':' + line;
     }
 
     int allocate(String className, int line) {
-        return ids.computeIfAbsent(key(className, line), k -> ids.size());
+        return ids.computeIfAbsent(key(className, line), k -> {
+            int id = ids.size();
+            locations.put(id, k);
+            return id;
+        });
+    }
+
+    /** The {@code class:line} a probe id stands for, or null if it was never allocated. */
+    public String locationOf(int probeId) {
+        return locations.get(probeId);
     }
 
     /** Probe id for a line, or -1 if that line was never instrumented. */

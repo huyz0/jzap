@@ -15,6 +15,8 @@ import java.util.Map;
  * @param failingBaselineTests tests that already failed before any mutant was applied. Every
  *                       mutant these cover would look killed for the wrong reason, so they
  *                       are excluded from selection and reported instead of silently trusted.
+ * @param reusedFromCache mutants whose verdict came from a previous run rather than from
+ *                       executing anything
  */
 public record AnalysisResult(
         List<Mutant> mutants,
@@ -22,7 +24,8 @@ public record AnalysisResult(
         int testsDiscovered,
         String scopeSummary,
         String engine,
-        List<String> failingBaselineTests) {
+        List<String> failingBaselineTests,
+        int reusedFromCache) {
 
     public AnalysisResult {
         mutants = mutants == null ? List.of() : List.copyOf(mutants);

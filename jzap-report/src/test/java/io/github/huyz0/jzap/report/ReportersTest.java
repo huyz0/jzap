@@ -38,7 +38,7 @@ class ReportersTest {
                         mutant("PRIMITIVE_RETURNS", 5, MutantStatus.SURVIVED),
                         mutant("NEGATE_CONDITIONALS", 9, MutantStatus.NO_COVERAGE)),
                 Map.of("coverage", 100L, "execution", 250L),
-                3, "all mutants in all target classes", "naive", List.of());
+                3, "all mutants in all target classes", "naive", List.of(), 0);
     }
 
     @Test
@@ -58,7 +58,7 @@ class ReportersTest {
     @Test
     void consoleWarnsLoudlyWhenTheSuiteIsAlreadyRed(@TempDir Path dir) {
         AnalysisResult red = new AnalysisResult(result().mutants(), Map.of(), 3, "scope", "naive",
-                List.of("ex.CalcTest#broken"));
+                List.of("ex.CalcTest#broken"), 0);
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 
         new ConsoleReporter(new PrintStream(buffer, true, StandardCharsets.UTF_8))
@@ -124,7 +124,7 @@ class ReportersTest {
                 List.of(new Mutant(new MutantKey("ex.Calc", "cmp", "(II)Z", 4, "MATH", 0),
                         ":app", "Calc.java", "a < b became a <= b", MutantStatus.SURVIVED,
                         null, 1, 1, 1L)),
-                Map.of(), 1, "scope", "naive", List.of());
+                Map.of(), 1, "scope", "naive", List.of(), 0);
 
         new HtmlReporter().write(withMarkup, ReportContext.of(dir, List.of()));
         String html = Files.readString(dir.resolve(HtmlReporter.FILE_NAME));

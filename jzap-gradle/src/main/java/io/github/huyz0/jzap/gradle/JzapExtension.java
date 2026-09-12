@@ -66,6 +66,15 @@ public abstract class JzapExtension {
     /** Extra JVM arguments for the analysis JVMs that run the tests. */
     public abstract ListProperty<String> getJvmArgs();
 
+    /**
+     * Directory holding the incremental cache. Unset means no caching.
+     *
+     * <p>Off by default, including here. A cache whose whole question is whether reuse is sound
+     * should not start reusing without being asked, and a build that silently reuses verdicts is
+     * hard to reason about the first time one looks wrong.
+     */
+    public abstract org.gradle.api.file.DirectoryProperty getCacheDir();
+
     private Double threshold;
 
     /** Fail the build if the mutation score falls below this percentage. */

@@ -2,6 +2,7 @@ package io.github.huyz0.jzap.cli;
 
 import io.github.huyz0.jzap.core.AnalysisEngine;
 import io.github.huyz0.jzap.model.AnalysisResult;
+import io.github.huyz0.jzap.model.CacheConfig;
 import io.github.huyz0.jzap.model.ChangedLines;
 import io.github.huyz0.jzap.model.ModuleModel;
 import io.github.huyz0.jzap.model.MutantStatus;
@@ -51,6 +52,12 @@ final class RunCommand implements Callable<Integer> {
     @Option(names = {"-q", "--quiet"}, description = "Suppress progress output.")
     boolean quiet;
 
+    @Option(names = "--cache-dir", paramLabel = "DIR",
+            description = "Reuse verdicts from a previous run stored here, and update it. "
+                    + "Off unless given: a cache whose whole question is whether reuse is sound "
+                    + "should not start reusing without being asked.")
+    Path cacheDir;
+
     @Option(names = {"-t", "--threads"}, paramLabel = "N",
             description = "Analysis threads. Default: whatever the model asks for, which "
                     + "defaults to one per available processor.")
@@ -76,6 +83,9 @@ final class RunCommand implements Callable<Integer> {
         if (threads != null) {
             model = model.withThreads(threads);
         }
+        if (cacheDir != null) {
+            model = model.withCache(CacheConfig.at(cacheDir.toString()));
+        }
 
         AnalysisResult result;
         try {
@@ -90,6 +100,10 @@ final class RunCommand implements Callable<Integer> {
         new Reporters(System.out).resolve(reporterIds)
                 .forEach(reporter -> reporter.write(result, context));
 
+        if (result.reusedFromCache() > 0) {
+            System.out.println(result.reusedFromCache() + " of " + result.mutants().size()
+                    + " verdicts reused from the cache at " + cacheDir);
+        }
         if (!reporterIds.equals(List.of("console"))) {
             System.out.println("Reports written to " + reportDir.toAbsolutePath());
         }

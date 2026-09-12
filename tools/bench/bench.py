@@ -215,6 +215,71 @@ def main():
         diff_summary = summarise_jzap(diff_reports)
         print(f"  jzap diff run {run + 1}/{args.runs}: {elapsed:.2f}s", file=sys.stderr)
 
+    # --- S5 and S6: the incremental cache ------------------------------------------------
+    cache_dir = os.path.join(args.out, "cache")
+    shutil.rmtree(cache_dir, ignore_errors=True)
+    cold_model = os.path.join(args.out, "model-cache.json")
+    cold_reports = os.path.join(args.out, "jzap-cache")
+    write_model(cold_model, props, {"kind": "ALL", "granularity": "line"}, cold_reports)
+
+    def cached_run():
+        shutil.rmtree(cold_reports, ignore_errors=True)
+        elapsed, result = timed([args.jzap, "run", "-m", cold_model, "-o", cold_reports,
+                                 "-q", "--cache-dir", cache_dir])
+        if result.returncode not in (0, 1):
+            print(result.stdout[-4000:])
+            sys.exit("jzap failed on a cached run")
+        return elapsed, summarise_jzap(cold_reports)
+
+    cold_time, _ = cached_run()
+    print(f"  cache cold: {cold_time:.2f}s", file=sys.stderr)
+
+    warm_times = []
+    for run in range(args.runs):
+        elapsed, warm_summary = cached_run()
+        warm_times.append(elapsed)
+        print(f"  cache warm {run + 1}/{args.runs}: {elapsed:.2f}s", file=sys.stderr)
+
+    # S6 recompiles one class for real rather than faking a change, because the whole question
+    # is whether invalidation is precise and a simulated change cannot answer it.
+    source_root = props["sourceRoot"]
+    changed_source = os.path.join(source_root, "bench", "Unit0.java")
+    original_source = open(changed_source, encoding="utf-8").read()
+    # `untested` is covered by no test, so the edit changes the class's bytecode without
+    # changing any verdict: what is being measured is invalidation scope, not a new result.
+    patched = original_source.replace("return value / 2 + 1;", "return value / 2 + 2;")
+    if patched == original_source:
+        sys.exit("could not patch the bench fixture for the incremental scenario")
+    # Each repetition must start from the pre-change cache. Without restoring it, only the
+    # first run does the invalidation work and the rest are no-change runs, so the median
+    # reports the wrong thing entirely -- which is what the first version of this did.
+    cache_file = os.path.join(cache_dir, "jzap-cache.txt")
+    pristine_cache = open(cache_file, encoding="utf-8").read()
+
+    incremental_times, incremental_summary = [], None
+    try:
+        open(changed_source, "w", encoding="utf-8").write(patched)
+        classes = props["mainClasses"].split(os.pathsep)[0]
+        compile_result = subprocess.run(
+            [args.java.replace("bin/java", "bin/javac"), "-g", "-d", classes,
+             "-cp", props["testRuntimeClasspath"], changed_source],
+            capture_output=True, text=True)
+        if compile_result.returncode != 0:
+            sys.exit("could not recompile the patched fixture: " + compile_result.stderr)
+        for run in range(args.runs):
+            open(cache_file, "w", encoding="utf-8").write(pristine_cache)
+            elapsed, incremental_summary = cached_run()
+            incremental_times.append(elapsed)
+            print(f"  cache after one changed class {run + 1}/{args.runs}: {elapsed:.2f}s",
+                  file=sys.stderr)
+    finally:
+        open(changed_source, "w", encoding="utf-8").write(original_source)
+        subprocess.run(
+            [args.java.replace("bin/java", "bin/javac"), "-g", "-d",
+             props["mainClasses"].split(os.pathsep)[0],
+             "-cp", props["testRuntimeClasspath"], changed_source],
+            capture_output=True, text=True)
+
     # --- report -------------------------------------------------------------------------
     lines = []
     lines.append("=" * 78)
@@ -274,6 +339,22 @@ def main():
     lines.append("  granularity and needs a git repository, so it would be doing a different")
     lines.append("  amount of work. Line-level scoping in the PIT ecosystem is arcmutate's,")
     lines.append("  which is commercial and unmeasured here.")
+    lines.append("")
+    lines.append("S5  re-run with no changes, cache warm")
+    lines.append("  " + report("jzap", warm_times))
+    lines.append(f"  {100.0 * statistics.median(warm_times) / statistics.median(jzap_times):.1f}%"
+                 f" of a full run; {statistics.median(jzap_times) / statistics.median(warm_times):.1f}x faster")
+    lines.append("")
+    lines.append("S6  re-run after one class was recompiled")
+    lines.append("  " + report("jzap", incremental_times))
+    lines.append(f"  {statistics.median(incremental_times) / statistics.median(warm_times):.1f}x"
+                 f" the no-change run, and still"
+                 f" {statistics.median(jzap_times) / statistics.median(incremental_times):.1f}x"
+                 f" faster than a full run")
+    lines.append("  The cache is restored to its pre-change state before each repetition, so")
+    lines.append("  every measured run is genuinely the first one after the change.")
+    lines.append("  The change is to a method no test covers, so no verdict moves: what this")
+    lines.append("  measures is how much the cache invalidates, not what it recomputes.")
     lines.append("")
     lines.append("Mutants and verdicts")
     lines.append(f"  jzap full: {jzap_summary[0]:4d} mutants  {dict(sorted(jzap_summary[1].items()))}")

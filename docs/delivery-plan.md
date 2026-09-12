@@ -398,7 +398,22 @@ deterministically.
 
 ## M11 · Incremental cache
 
-**Not started.**
+**Done, with one DoD item outstanding.** Plain-text cache keyed on content hashes, the
+invalidation rules below implemented and individually tested, toolchain mismatch refused,
+timeouts and run errors never stored, twelve end-to-end tests comparing cached runs against
+uncached ones rather than against recorded expectations.
+
+Outstanding: exact-invalidation-set assertions by mutant key. The tests assert invalidation
+*scope* (only the changed class's mutants are re-analysed) rather than enumerating the exact
+expected set.
+
+One thing this milestone taught: **caching verdicts alone is close to pointless.** A fully
+cached run still executed the whole test suite once to rediscover coverage, which left the
+warm run at 6.5% of a full run rather than the 5% target -- and on a real project with a slow
+suite it would have been most of the cost. The coverage map is now cached too, keyed on every
+scanned class and every test class, and reused only when the stored map covers every class the
+current run needs. A map recorded during a narrow diff run must not be mistaken for a complete
+one: reusing it would silently report every mutant in the missing classes as uncovered.
 
 **Goal.** Reuse prior verdicts safely across runs and machines.
 

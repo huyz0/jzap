@@ -9,6 +9,7 @@ import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.PathSensitive;
@@ -126,6 +127,15 @@ public abstract class JzapTask extends DefaultTask {
     @OutputDirectory
     public abstract DirectoryProperty getReportDir();
 
+    /**
+     * The incremental cache directory, if caching is on.
+     *
+     * <p>Deliberately not declared as an output: it is read-write state that survives a clean of
+     * the report directory, and declaring it as an output would let Gradle delete it as stale.
+     */
+    @Internal
+    public abstract DirectoryProperty getCacheDir();
+
     @Inject
     protected abstract ExecOperations getExecOperations();
 
@@ -165,6 +175,10 @@ public abstract class JzapTask extends DefaultTask {
         }
         if (getMutateLoopCounters().getOrElse(false)) {
             arguments.add("--mutate-loop-counters");
+        }
+        if (getCacheDir().isPresent()) {
+            arguments.addAll(List.of("--cache-dir",
+                    getCacheDir().get().getAsFile().getAbsolutePath()));
         }
         if (getThreshold().isPresent()) {
             arguments.addAll(List.of("--threshold", Double.toString(getThreshold().get())));

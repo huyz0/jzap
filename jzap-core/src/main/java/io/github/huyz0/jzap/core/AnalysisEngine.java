@@ -1,6 +1,7 @@
 package io.github.huyz0.jzap.core;
 
 import io.github.huyz0.jzap.model.AnalysisResult;
+import io.github.huyz0.jzap.model.CacheConfig;
 import io.github.huyz0.jzap.model.ChangedLines;
 import io.github.huyz0.jzap.model.ModuleModel;
 import io.github.huyz0.jzap.model.Mutant;
@@ -18,6 +19,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.nio.file.Path;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
@@ -65,6 +68,7 @@ public final class AnalysisEngine {
     private final ProjectModel model;
     private final Listener listener;
     private final RuntimeJars.Jars jars;
+    private final AtomicInteger reusedFromCache = new AtomicInteger();
 
     public AnalysisEngine(ProjectModel model, Listener listener) {
         this.model = model;
@@ -81,8 +85,12 @@ public final class AnalysisEngine {
         List<String> failingBaseline = new ArrayList<>();
         int testsDiscovered = 0;
 
+        MutantCache cache = openCache();
+        cache.discardReason().ifPresent(reason ->
+                listener.warning("not reusing the previous cache: " + reason));
+
         for (ModuleModel module : model.modules()) {
-            ModuleAnalysis analysis = new ModuleAnalysis(module, changed);
+            ModuleAnalysis analysis = new ModuleAnalysis(module, changed, cache);
             long start = System.nanoTime();
             analysis.run();
             timings.merge("module:" + module.id(), millisSince(start), Long::sum);
@@ -94,13 +102,36 @@ public final class AnalysisEngine {
             testsDiscovered += analysis.testCount;
         }
 
+        cache.write();
+
         return new AnalysisResult(
                 Mutant.sorted(allResults),
                 timings,
                 testsDiscovered,
                 describeScope(changed),
                 ENGINE_ID,
-                failingBaseline);
+                failingBaseline,
+                reusedFromCache.get());
+    }
+
+    /**
+     * Opens the incremental cache, if one was configured.
+     *
+     * <p>Opt-in rather than on by default. A cache whose whole question is whether reuse is
+     * sound should not start reusing without being asked.
+     */
+    private MutantCache openCache() {
+        CacheConfig config = model.cache();
+        Path file = config.enabled() && config.dir() != null
+                ? Path.of(config.dir()).resolve("jzap-cache.txt")
+                : null;
+        return MutantCache.open(file, new MutantCache.Header(
+                ENGINE_ID,
+                EngineVersion.get(),
+                String.join(",", Mutators.resolve(model.scope().mutators()).stream()
+                        .map(Mutator::id).sorted().toList()),
+                model.scope().isFilterEnabled(LoopCounterFilter.ID) ? LoopCounterFilter.ID : "",
+                config.toolchain() != null ? config.toolchain() : Hashes.toolchain()));
     }
 
     private String describeScope(ChangedLines changed) {
@@ -127,9 +158,14 @@ public final class AnalysisEngine {
 
         private final ModuleModel module;
         private final ChangedLines changed;
+        private final MutantCache cache;
         private final MutationEngine mutation = new MutationEngine(
                 Mutators.resolve(model.scope().mutators()),
                 model.scope().isFilterEnabled(LoopCounterFilter.ID));
+
+        /** Bytecode hash per mutated class, and per test class: the cache's invalidation inputs. */
+        private final Map<String, String> classHashes = new LinkedHashMap<>();
+        private Map<String, String> testClassHashes = Map.of();
 
         final List<Mutant> results = new ArrayList<>();
         final List<String> failingBaselineTests = new ArrayList<>();
@@ -138,9 +174,10 @@ public final class AnalysisEngine {
         long executionMillis;
         int testCount;
 
-        ModuleAnalysis(ModuleModel module, ChangedLines changed) {
+        ModuleAnalysis(ModuleModel module, ChangedLines changed, MutantCache cache) {
             this.module = module;
             this.changed = changed;
+            this.cache = cache;
         }
 
         void run() {
@@ -153,6 +190,7 @@ public final class AnalysisEngine {
             List<Mutant> inScope = new ArrayList<>();
             for (ClassBytes c : classes) {
                 bytesByClass.put(c.binaryName(), c.bytes());
+                classHashes.put(c.binaryName(), Hashes.of(c.bytes()));
                 for (Mutant m : mutation.discover(module.id(), c.bytes())) {
                     if (inScope(m)) {
                         inScope.add(m);
@@ -177,6 +215,7 @@ public final class AnalysisEngine {
             Coverage coverage = gatherCoverage(mutatedClasses, bytesByClass);
             failingBaselineTests.addAll(coverage.failingTests);
             testCount = coverage.testIds.size();
+            testClassHashes = hashTestClasses();
             execute(inScope, bytesByClass, coverage);
         }
 
@@ -210,8 +249,52 @@ public final class AnalysisEngine {
             return dollar < 0 ? simple : simple.substring(0, dollar);
         }
 
+        /**
+         * Bytecode hash of every compiled test class.
+         *
+         * <p>Hashed by class rather than by test method, because a method body is not separable
+         * in a class file: any change to the file could change what any of its tests assert.
+         */
+        private Map<String, String> hashTestClasses() {
+            Map<String, String> hashes = new LinkedHashMap<>();
+            for (ClassBytes c : new ClassScanner(List.of(), List.of())
+                    .scan(module.testClassPaths())) {
+                hashes.put(c.binaryName(), Hashes.of(c.bytes()));
+            }
+            return hashes;
+        }
+
+        /**
+         * Hash over every scanned class and every test class.
+         *
+         * <p>Coverage depends on all of it: a change to any production class can change which
+         * lines a test reaches, and a change to any test class can change what it runs.
+         */
+        private String coverageKey() {
+            List<String> parts = new ArrayList<>();
+            classHashes.forEach((name, hash) -> parts.add("class " + name + "=" + hash));
+            testClassHashes.forEach((name, hash) -> parts.add("test " + name + "=" + hash));
+            parts.sort(String::compareTo);
+            return Hashes.ofLines(parts);
+        }
+
         private Coverage gatherCoverage(Set<String> mutatedClasses, Map<String, byte[]> bytesByClass) {
             long start = System.nanoTime();
+
+            java.util.Optional<MutantCache.CachedCoverage> cached =
+                    cache.reuseCoverage(coverageKey(), mutatedClasses);
+            if (cached.isPresent()) {
+                MutantCache.CachedCoverage reused = cached.get();
+                listener.phase("coverage", module.id() + ": reused from cache, "
+                        + reused.durations().size() + " tests");
+                coverageMillis = millisSince(start);
+                return new Coverage(
+                        new LinkedHashMap<>(reused.testsByLocation()),
+                        new LinkedHashMap<>(reused.durations()),
+                        new ArrayList<>(reused.failingTests()),
+                        new ArrayList<>(reused.durations().keySet()));
+            }
+
             listener.phase("coverage", module.id());
             ProbeIndex index = new ProbeIndex();
             CoverageInstrumenter instrumenter = new CoverageInstrumenter(index);
@@ -224,7 +307,7 @@ public final class AnalysisEngine {
                         instrumenter.instrument(className, original), "instrumented"));
             }
 
-            Map<Integer, Set<String>> testsByProbe = new LinkedHashMap<>();
+            Map<String, Set<String>> testsByLocation = new LinkedHashMap<>();
             Map<String, Long> durations = new LinkedHashMap<>();
             List<String> failing = new ArrayList<>();
             List<String> testIds;
@@ -249,7 +332,11 @@ public final class AnalysisEngine {
                                 + (result.failureMessage() == null ? "" : " -- " + result.failureMessage()));
                     }
                     for (int probe : result.probeIds()) {
-                        testsByProbe.computeIfAbsent(probe, k -> new LinkedHashSet<>()).add(testId);
+                        String location = index.locationOf(probe);
+                        if (location != null) {
+                            testsByLocation.computeIfAbsent(location, k -> new LinkedHashSet<>())
+                                    .add(testId);
+                        }
                     }
                     listener.progress(++done, testIds.size());
                 }
@@ -260,22 +347,38 @@ public final class AnalysisEngine {
                         + "They are excluded from selection, because a mutant they cover would be "
                         + "reported as killed by a failure that has nothing to do with it.");
             }
+            cache.recordCoverage(new MutantCache.CachedCoverage(
+                    coverageKey(), mutatedClasses, testsByLocation, durations, failing));
             coverageMillis = millisSince(start);
-            return new Coverage(index, testsByProbe, durations, failing, testIds);
+            return new Coverage(testsByLocation, durations, failing, testIds);
         }
 
         private void execute(List<Mutant> mutants, Map<String, byte[]> bytesByClass, Coverage coverage) {
             long start = System.nanoTime();
 
-            // Uncovered mutants are settled without starting anything: no test executes the
-            // mutated line, so there is nothing to run them against.
             List<Mutant> covered = new ArrayList<>();
             for (Mutant mutant : mutants) {
-                if (coverage.selectFor(mutant).isEmpty()) {
-                    results.add(mutant.withOutcome(MutantStatus.NO_COVERAGE, null, 0, 0, 0));
-                } else {
-                    covered.add(mutant);
+                List<String> selected = coverage.selectFor(mutant);
+                String classHash = classHashes.getOrDefault(mutant.key().className(), "?");
+
+                // The cache is consulted before anything is executed, including for uncovered
+                // mutants: "no test covers this" is a verdict like any other, and it becomes
+                // wrong the moment a test appears that does.
+                Optional<Mutant> reused = cache.reuse(mutant, classHash, selected, testClassHashes);
+                if (reused.isPresent()) {
+                    results.add(reused.get());
+                    cache.carryForward(mutant.key());
+                    reusedFromCache.incrementAndGet();
+                    continue;
                 }
+                if (selected.isEmpty()) {
+                    // No test executes the mutated line, so there is nothing to run it against.
+                    Mutant uncovered = mutant.withOutcome(MutantStatus.NO_COVERAGE, null, 0, 0, 0);
+                    results.add(uncovered);
+                    cache.record(uncovered, classHash, selected, testClassHashes);
+                    continue;
+                }
+                covered.add(mutant);
             }
             if (covered.isEmpty()) {
                 executionMillis = millisSince(start);
@@ -425,8 +528,11 @@ public final class AnalysisEngine {
                     status = MutantStatus.RUN_ERROR;
                     discard();
                 }
-                return mutant.withOutcome(status, killingTest, selected.size(), testsRun,
+                Mutant analysed = mutant.withOutcome(status, killingTest, selected.size(), testsRun,
                         millisSince(mutantStart));
+                cache.record(analysed, classHashes.getOrDefault(mutant.key().className(), "?"),
+                        selected, testClassHashes);
+                return analysed;
             }
 
             private void recycle() {
@@ -448,10 +554,15 @@ public final class AnalysisEngine {
         }
     }
 
-    /** Per-test coverage plus the baselines that timeouts and ordering are derived from. */
+    /**
+     * Per-test coverage plus the baselines that timeouts and ordering are derived from.
+     *
+     * <p>Keyed by {@code class:line} rather than by probe id. Probe ids are an artefact of how a
+     * particular run instrumented the code, so keying on them would make the map impossible to
+     * cache and reuse in a later run that instrumented a different subset of classes.
+     */
     private record Coverage(
-            ProbeIndex index,
-            Map<Integer, Set<String>> testsByProbe,
+            Map<String, Set<String>> testsByLocation,
             Map<String, Long> durations,
             List<String> failingTests,
             List<String> testIds) {
@@ -464,11 +575,8 @@ public final class AnalysisEngine {
          * only the tests before the first failure are ever paid for.
          */
         List<String> selectFor(Mutant mutant) {
-            int probe = index.lookup(mutant.key().className(), mutant.key().line());
-            if (probe < 0) {
-                return List.of();
-            }
-            Set<String> tests = testsByProbe.get(probe);
+            Set<String> tests = testsByLocation.get(
+                    mutant.key().className() + ":" + mutant.key().line());
             if (tests == null) {
                 return List.of();
             }

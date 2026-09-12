@@ -86,6 +86,7 @@ public class JzapPlugin implements Plugin<Project> {
         task.getThreshold().set(project.provider(extension::getThreshold));
         task.getFailOnSurvivors().set(extension.getFailOnSurvivors());
         task.getJvmArgs().set(extension.getJvmArgs());
+        task.getCacheDir().set(extension.getCacheDir());
         task.getReportDir().convention(
                 project.getLayout().getBuildDirectory().dir("reports/jzap"));
 
