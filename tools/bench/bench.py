@@ -160,6 +160,29 @@ def main():
         pit_summary = summarise_pit(pit_reports)
         print(f"  PIT  full run {run + 1}/{args.runs}: {elapsed:.2f}s", file=sys.stderr)
 
+    # --- S1b: thread scaling ------------------------------------------------------------
+    # Reported as a curve rather than a single "parallel is faster" claim, because the shape is
+    # the interesting part: where it stops scaling says whether the bottleneck is still the
+    # analysis JVMs or has moved to the machine.
+    cores = os.cpu_count() or 1
+    thread_counts = sorted({1, 2, 4, cores} & set(range(1, cores + 1)))
+    scaling = {}
+    for threads in thread_counts:
+        model = os.path.join(args.out, f"model-t{threads}.json")
+        reports = os.path.join(args.out, f"jzap-t{threads}")
+        write_model(model, props, {"kind": "ALL", "granularity": "line"}, reports)
+        times = []
+        for run in range(args.runs):
+            shutil.rmtree(reports, ignore_errors=True)
+            elapsed, result = timed([args.jzap, "run", "-m", model, "-o", reports,
+                                     "-q", "-t", str(threads)])
+            if result.returncode not in (0, 1):
+                print(result.stdout[-4000:])
+                sys.exit(f"jzap failed at {threads} threads")
+            times.append(elapsed)
+        scaling[threads] = times
+        print(f"  jzap at {threads} thread(s): {statistics.median(times):.2f}s", file=sys.stderr)
+
     # --- S3: diff run, jzap only --------------------------------------------------------
     # PIT's free equivalent scopes by changed *file*, not changed line, and needs a git
     # repository to do it. Comparing the two here would compare different amounts of work, so
@@ -222,6 +245,20 @@ def main():
                      + ".")
     else:
         lines.append("  Work parity: both tools analysed the same number of mutants.")
+    lines.append("")
+    lines.append(f"S1b thread scaling ({cores} cores available)")
+    single = statistics.median(scaling[1])
+    for threads in thread_counts:
+        median = statistics.median(scaling[threads])
+        lines.append("  " + report(f"jzap, {threads} thread(s)", scaling[threads])
+                     + f"   {single / median:5.2f}x vs 1 thread")
+    best = min(thread_counts, key=lambda t: statistics.median(scaling[t]))
+    lines.append(f"  fastest at {best} thread(s), "
+                 f"{statistics.median(pit_times) / statistics.median(scaling[best]):.2f}x PIT")
+    lines.append("  Scaling is sublinear because the coverage phase is serial and this fixture")
+    lines.append("  has only 40 classes: work is partitioned by class, so beyond a handful of")
+    lines.append("  workers each one pays JVM startup for very little work.")
+
     lines.append("")
     if diff_summary[0] == 0:
         sys.exit("the diff run found no mutants, so its timing would be meaningless. "

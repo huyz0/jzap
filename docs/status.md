@@ -21,6 +21,29 @@ repository present. Widening to whole changed classes with `--scope class`.
 **Reporters**: console, jzap's own JSON, the mutation-testing-elements schema, a
 self-contained HTML page, and per-survivor pull-request annotations.
 
+**A Gradle plugin.** `id 'io.github.huyz0.jzap'` adds `mutationTest` and `mutationTestDiff`:
+
+```groovy
+plugins { id 'java'; id 'io.github.huyz0.jzap' }
+
+jzap {
+    engineVersion = "0.1.0"      // or engineClasspath, to run a local build
+    threads = 4
+    threshold = 80
+}
+```
+
+It computes the project model from source sets and the toolchain, forks the engine with its
+version independent of the plugin's, declares its inputs and outputs so Gradle can skip it, and
+is configuration-cache compatible. The conformance test asserts the model it writes drives the
+engine unaided, which is also how a user reproduces a plugin problem without Gradle in the loop.
+
+**Parallel execution.** Mutants are partitioned by class across a pool of analysis JVMs, so a
+worker keeps its classes loaded and JIT-warmed rather than re-paying startup per mutant. Verdicts
+and report bytes are asserted identical at 1, 2 and 8 threads, because thread count leaking into
+a result would break the Gradle build cache before it is built. A hung mutant kills only its own
+worker; there is a fixture whose mutant genuinely never returns to prove the recovery path.
+
 **Verified against PIT.** `./gradlew :tools:parity:parity` runs both tools over the same
 compiled classes with the same mutator set and compares them, on a hand-written fixture and on
 a generated one two orders of magnitude larger. Current result:
@@ -99,14 +122,13 @@ differentially tested against.
 
 | Missing | Milestone |
 |---|---|
-| Mutant schemata (compile once, all mutants as guarded branches) | M8 |
-| Parallel execution across cores | M8 |
+| Mutant schemata (compile once, all mutants as guarded branches) | M8b |
 | Warm daemon with in-JVM mutant switching and static-state reset | M9 |
 | Block-granularity coverage, kill-test-first ordering, hit-probe timeouts | M10 |
 | Incremental result cache | M11 |
 | Arid-node suppression, one-per-line, TCE dedup, extreme mutation | M12 |
 | Kotlin junk-mutant handling and inline functions | M15, M16 |
-| Gradle and Maven plugins | M18, M19 |
+| Maven plugin | M19 |
 | Multi-module single run with cross-module test selection | M20 |
 
 Also absent: parallelism (the engine is single-threaded), Tier B and Tier C corpora (parity

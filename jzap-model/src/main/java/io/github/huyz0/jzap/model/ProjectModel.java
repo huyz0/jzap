@@ -67,4 +67,9 @@ public record ProjectModel(
         return new ProjectModel(schemaVersion, modules, newScope, cache, reporters, threads,
                 timeoutFactor, timeoutConstMillis, maxMutantsPerMinion);
     }
+
+    public ProjectModel withThreads(int newThreads) {
+        return new ProjectModel(schemaVersion, modules, scope, cache, reporters, newThreads,
+                timeoutFactor, timeoutConstMillis, maxMutantsPerMinion);
+    }
 }

@@ -11,12 +11,20 @@ import io.github.huyz0.jzap.wire.Wire;
 import io.github.huyz0.jzap.wire.WireException;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The reference engine: one mutant at a time, in a forked JVM, with coverage-driven test
@@ -258,78 +266,185 @@ public final class AnalysisEngine {
 
         private void execute(List<Mutant> mutants, Map<String, byte[]> bytesByClass, Coverage coverage) {
             long start = System.nanoTime();
-            listener.phase("execution", module.id() + ": " + mutants.size() + " mutants");
 
-            MinionProcess minion = null;
-            int sinceRestart = 0;
-            int done = 0;
+            // Uncovered mutants are settled without starting anything: no test executes the
+            // mutated line, so there is nothing to run them against.
+            List<Mutant> covered = new ArrayList<>();
+            for (Mutant mutant : mutants) {
+                if (coverage.selectFor(mutant).isEmpty()) {
+                    results.add(mutant.withOutcome(MutantStatus.NO_COVERAGE, null, 0, 0, 0));
+                } else {
+                    covered.add(mutant);
+                }
+            }
+            if (covered.isEmpty()) {
+                executionMillis = millisSince(start);
+                return;
+            }
+
+            // Partitioned by class, not round robin. A worker that stays on one class keeps it
+            // loaded and JIT-compiled; scattering classes across workers re-pays class loading
+            // and warmup for every mutant.
+            Map<String, List<Mutant>> byClass = new LinkedHashMap<>();
+            for (Mutant mutant : covered) {
+                byClass.computeIfAbsent(mutant.key().className(), k -> new ArrayList<>()).add(mutant);
+            }
+            Queue<List<Mutant>> queue = new ConcurrentLinkedQueue<>(byClass.values());
+
+            int threads = Math.max(1, Math.min(model.threads(), byClass.size()));
+            listener.phase("execution", module.id() + ": " + covered.size() + " mutants on "
+                    + threads + " thread(s)");
+
+            Collection<Mutant> analysed = new ConcurrentLinkedQueue<>();
+            AtomicInteger done = new AtomicInteger();
+            if (threads == 1) {
+                new Worker(queue, bytesByClass, coverage, analysed, done, covered.size()).run();
+            } else {
+                runInParallel(threads, queue, bytesByClass, coverage, analysed, done, covered.size());
+            }
+            results.addAll(analysed);
+            executionMillis = millisSince(start);
+        }
+
+        private void runInParallel(int threads, Queue<List<Mutant>> queue,
+                                   Map<String, byte[]> bytesByClass, Coverage coverage,
+                                   Collection<Mutant> analysed, AtomicInteger done, int total) {
+            ExecutorService pool = Executors.newFixedThreadPool(threads, runnable -> {
+                Thread thread = new Thread(runnable, "jzap-worker");
+                thread.setDaemon(true);
+                return thread;
+            });
             try {
-                for (Mutant mutant : mutants) {
-                    List<String> selected = coverage.selectFor(mutant);
-                    if (selected.isEmpty()) {
-                        results.add(mutant.withOutcome(MutantStatus.NO_COVERAGE, null, 0, 0, 0));
-                        listener.progress(++done, mutants.size());
-                        continue;
-                    }
-
-                    // A mutant in a static initialiser only takes effect if the class has not
-                    // been loaded yet, so it gets a JVM of its own. PIT reports these as
-                    // surviving for want of this, and documents it as a known limitation.
-                    boolean needsFreshJvm = "<clinit>".equals(mutant.key().methodName());
-                    if (minion == null || !minion.isAlive() || needsFreshJvm
-                            || sinceRestart >= model.maxMutantsPerMinion()) {
-                        if (minion != null) {
-                            minion.close();
-                        }
-                        minion = MinionProcess.start(module, jars, true);
-                        minion.listTests(module.testClassPaths());
-                        sinceRestart = 0;
-                    }
-
-                    long mutantStart = System.nanoTime();
-                    MutantStatus status;
-                    String killingTest = null;
-                    int testsRun = 0;
+                List<Future<?>> futures = new ArrayList<>(threads);
+                for (int i = 0; i < threads; i++) {
+                    futures.add(pool.submit(
+                            new Worker(queue, bytesByClass, coverage, analysed, done, total)));
+                }
+                for (Future<?> future : futures) {
                     try {
-                        byte[] mutated = mutation.apply(bytesByClass.get(mutant.key().className()), mutant.key());
-                        minion.setOverride(mutant.key().className(), mutated);
-                        MinionProcess.MutantOutcome outcome =
-                                minion.runTests(selected, coverage.timeoutFor(selected, model));
-                        testsRun = outcome.testsRun();
-                        status = switch (outcome.code()) {
-                            case Wire.OUTCOME_FAILED -> MutantStatus.KILLED;
-                            case Wire.OUTCOME_ALL_PASSED -> MutantStatus.SURVIVED;
-                            case Wire.OUTCOME_NON_VIABLE -> MutantStatus.NON_VIABLE;
-                            default -> MutantStatus.RUN_ERROR;
-                        };
-                        if (status == MutantStatus.KILLED) {
-                            killingTest = outcome.failingTest();
-                        }
-                        minion.clearOverrides();
-                    } catch (MinionProcess.HungException e) {
-                        status = MutantStatus.TIMED_OUT;
-                        minion.destroy();
-                        minion = null;
-                    } catch (WireException | IllegalStateException e) {
-                        listener.warning("mutant " + mutant.key().asString() + " could not be analysed: "
-                                + e.getMessage());
-                        status = MutantStatus.RUN_ERROR;
-                        if (minion != null) {
-                            minion.destroy();
-                        }
-                        minion = null;
+                        future.get();
+                    } catch (ExecutionException e) {
+                        // One worker failing must not discard what the others produced, so the
+                        // failure is reported and the remaining futures are still awaited.
+                        listener.warning("an analysis worker failed: " + e.getCause());
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new WireException("analysis interrupted", e);
                     }
-                    sinceRestart++;
-                    results.add(mutant.withOutcome(status, killingTest, selected.size(), testsRun,
-                            millisSince(mutantStart)));
-                    listener.progress(++done, mutants.size());
                 }
             } finally {
+                pool.shutdownNow();
+            }
+        }
+
+        /**
+         * Analyses whole classes taken from a shared queue, in one analysis JVM of its own.
+         *
+         * <p>Each worker owning its own JVM is what makes a hung mutant survivable: the process
+         * is killed and only that worker pauses to start a replacement.
+         */
+        private final class Worker implements Runnable {
+
+            private final Queue<List<Mutant>> queue;
+            private final Map<String, byte[]> bytesByClass;
+            private final Coverage coverage;
+            private final Collection<Mutant> analysed;
+            private final AtomicInteger done;
+            private final int total;
+
+            private MinionProcess minion;
+            private int sinceRestart;
+
+            Worker(Queue<List<Mutant>> queue, Map<String, byte[]> bytesByClass, Coverage coverage,
+                   Collection<Mutant> analysed, AtomicInteger done, int total) {
+                this.queue = queue;
+                this.bytesByClass = bytesByClass;
+                this.coverage = coverage;
+                this.analysed = analysed;
+                this.done = done;
+                this.total = total;
+            }
+
+            @Override
+            public void run() {
+                try {
+                    List<Mutant> batch;
+                    while ((batch = queue.poll()) != null) {
+                        for (Mutant mutant : batch) {
+                            analysed.add(analyseOne(mutant));
+                            listener.progress(done.incrementAndGet(), total);
+                        }
+                    }
+                } finally {
+                    if (minion != null) {
+                        minion.close();
+                    }
+                }
+            }
+
+            private Mutant analyseOne(Mutant mutant) {
+                List<String> selected = coverage.selectFor(mutant);
+                long mutantStart = System.nanoTime();
+
+                // A mutant in a static initialiser only takes effect if the class has not been
+                // loaded yet, so it gets a JVM of its own. PIT reports these as surviving for
+                // want of this, and documents it as a known limitation.
+                boolean needsFreshJvm = "<clinit>".equals(mutant.key().methodName());
+                if (minion == null || !minion.isAlive() || needsFreshJvm
+                        || sinceRestart >= model.maxMutantsPerMinion()) {
+                    recycle();
+                }
+
+                MutantStatus status;
+                String killingTest = null;
+                int testsRun = 0;
+                try {
+                    byte[] mutated = mutation.apply(bytesByClass.get(mutant.key().className()),
+                            mutant.key());
+                    minion.setOverride(mutant.key().className(), mutated);
+                    MinionProcess.MutantOutcome outcome =
+                            minion.runTests(selected, coverage.timeoutFor(selected, model));
+                    testsRun = outcome.testsRun();
+                    status = switch (outcome.code()) {
+                        case Wire.OUTCOME_FAILED -> MutantStatus.KILLED;
+                        case Wire.OUTCOME_ALL_PASSED -> MutantStatus.SURVIVED;
+                        case Wire.OUTCOME_NON_VIABLE -> MutantStatus.NON_VIABLE;
+                        default -> MutantStatus.RUN_ERROR;
+                    };
+                    if (status == MutantStatus.KILLED) {
+                        killingTest = outcome.failingTest();
+                    }
+                    minion.clearOverrides();
+                    sinceRestart++;
+                } catch (MinionProcess.HungException e) {
+                    status = MutantStatus.TIMED_OUT;
+                    discard();
+                } catch (WireException | IllegalStateException e) {
+                    listener.warning("mutant " + mutant.key().asString() + " could not be analysed: "
+                            + e.getMessage());
+                    status = MutantStatus.RUN_ERROR;
+                    discard();
+                }
+                return mutant.withOutcome(status, killingTest, selected.size(), testsRun,
+                        millisSince(mutantStart));
+            }
+
+            private void recycle() {
                 if (minion != null) {
                     minion.close();
                 }
+                minion = MinionProcess.start(module, jars, true);
+                minion.listTests(module.testClassPaths());
+                sinceRestart = 0;
             }
-            executionMillis = millisSince(start);
+
+            /** Kills the JVM outright. The only reliable way to stop a mutant that hangs. */
+            private void discard() {
+                if (minion != null) {
+                    minion.destroy();
+                    minion = null;
+                }
+            }
         }
     }
 

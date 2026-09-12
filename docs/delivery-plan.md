@@ -621,7 +621,29 @@ degrading cleanly when absent.
 
 ## M18 · Gradle plugin
 
-**Not started.**
+**Mostly done.** Plugin id `io.github.huyz0.jzap`, tasks `mutationTest` and `mutationTestDiff`, model computed
+from source sets and toolchains, engine forked with its version independent of the plugin's,
+up-to-date checks working, configuration cache compatible, verified by seven TestKit tests
+including a conformance check that the model the plugin writes drives the engine on its own.
+
+Outstanding: the aggregate root task emitting one multi-module model (that is M20's work), the
+build-cache relocatability check (waits on M11's content hashing, since the report embeds phase
+timings), and the Android and Kotlin Multiplatform decision.
+
+Three things this milestone taught, recorded because they are not obvious:
+
+- Gradle's Groovy DSL turns `threshold = 80.0` into a `BigDecimal`, which will not assign to a
+  `Property<Double>`, and Gradle forbids declaring a setter next to an abstract property getter.
+  The obvious way to write the obvious thing fails with a type error unless the property is a
+  plain scalar with a `Number` setter.
+- An unresolvable engine cannot be reported with a better message than Gradle's own without
+  giving up configuration-cache compatibility. `@Classpath` inputs are snapshotted before any
+  action; an `@Internal` file collection still gains an implicit task dependency Gradle resolves
+  first; and a non-file `Property` fed by a provider is finalised, and so queried, before the
+  action too. Gradle's message already names the configuration and the coordinate.
+- The conformance test worth writing is not "does the model look right" but "does the engine run
+  from it unaided". That also gives users a way to reproduce a plugin problem with no Gradle in
+  the loop.
 
 **Goal.** First-class Gradle support, targeting the gap that free line-level diff mutation
 testing does not exist there

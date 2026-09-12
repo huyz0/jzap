@@ -51,6 +51,11 @@ final class RunCommand implements Callable<Integer> {
     @Option(names = {"-q", "--quiet"}, description = "Suppress progress output.")
     boolean quiet;
 
+    @Option(names = {"-t", "--threads"}, paramLabel = "N",
+            description = "Analysis threads. Default: whatever the model asks for, which "
+                    + "defaults to one per available processor.")
+    Integer threads;
+
     @Override
     public Integer call() {
         ProjectModel model;
@@ -66,6 +71,10 @@ final class RunCommand implements Callable<Integer> {
         if (dryRun) {
             printResolution(model, changed);
             return EXIT_OK;
+        }
+
+        if (threads != null) {
+            model = model.withThreads(threads);
         }
 
         AnalysisResult result;
@@ -131,18 +140,23 @@ final class RunCommand implements Callable<Integer> {
         return roots;
     }
 
-    /** Single-line progress, because mutation analysis is long enough that silence looks broken. */
+    /**
+     * Single-line progress, because mutation analysis is long enough that silence looks broken.
+     *
+     * <p>Synchronised and volatile: the engine calls this from every analysis worker, and
+     * interleaved half-lines are worse than no progress at all.
+     */
     private static final class ConsoleListener implements AnalysisEngine.Listener {
 
         private final boolean quiet;
-        private String phase = "";
+        private volatile String phase = "";
 
         ConsoleListener(boolean quiet) {
             this.quiet = quiet;
         }
 
         @Override
-        public void phase(String name, String detail) {
+        public synchronized void phase(String name, String detail) {
             phase = name;
             if (!quiet) {
                 System.err.println("jzap: " + name + (detail == null ? "" : " - " + detail));
@@ -150,7 +164,7 @@ final class RunCommand implements Callable<Integer> {
         }
 
         @Override
-        public void progress(int done, int total) {
+        public synchronized void progress(int done, int total) {
             if (!quiet && (done == total || done % 25 == 0)) {
                 System.err.print("\rjzap: " + phase + " " + done + "/" + total);
                 if (done == total) {
@@ -160,7 +174,7 @@ final class RunCommand implements Callable<Integer> {
         }
 
         @Override
-        public void warning(String message) {
+        public synchronized void warning(String message) {
             System.err.println("jzap: warning: " + message);
         }
     }

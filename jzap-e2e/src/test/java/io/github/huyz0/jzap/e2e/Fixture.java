@@ -21,9 +21,20 @@ final class Fixture {
     private final Properties properties = new Properties();
 
     Fixture() {
-        String descriptor = System.getProperty("jzap.fixture.descriptor");
+        this("jzap.fixture.descriptor", ":fixtures:sample-java");
+    }
+
+    static Fixture hang() {
+        return new Fixture("jzap.hang.descriptor", ":fixtures:hang-java");
+    }
+
+    private final String moduleId;
+
+    private Fixture(String property, String moduleId) {
+        this.moduleId = moduleId;
+        String descriptor = System.getProperty(property);
         if (descriptor == null) {
-            throw new IllegalStateException("jzap.fixture.descriptor is not set; run this through Gradle");
+            throw new IllegalStateException(property + " is not set; run this through Gradle");
         }
         try (var in = Files.newInputStream(Path.of(descriptor))) {
             properties.load(in);
@@ -43,7 +54,7 @@ final class Fixture {
 
     ProjectModel model(Scope scope) {
         ModuleModel module = new ModuleModel(
-                ":fixtures:sample-java",
+                moduleId,
                 paths("mainClasses"),
                 paths("sourceRoot"),
                 paths("testClasses"),

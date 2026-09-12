@@ -15,10 +15,12 @@ include(
     "jzap-git",
     "jzap-report",
     "jzap-cli",
+    "jzap-gradle",
     "jzap-e2e",
 )
 
 include("fixtures:sample-java")
 include("fixtures:bench-java")
+include("fixtures:hang-java")
 include("tools:parity")
 include("tools:bench")

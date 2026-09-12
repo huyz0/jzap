@@ -12,7 +12,26 @@ that motivates the project — mutant schemata, a warm daemon, incremental cachi
 is designed but not yet built. See [docs/status.md](docs/status.md) for exactly what exists,
 including the measured timings.
 
-## Try it
+## Gradle
+
+```groovy
+plugins {
+    id 'java'
+    id 'io.github.huyz0.jzap'
+}
+
+jzap {
+    threads = 4
+    threshold = 80
+}
+```
+
+```bash
+./gradlew mutationTest        # the whole module
+./gradlew mutationTestDiff    # only lines changed since HEAD, including uncommitted work
+```
+
+## Try it without a build tool
 
 ```bash
 ./gradlew :jzap-cli:installDist :fixtures:sample-java:writeProjectModel
@@ -76,6 +95,7 @@ jzap-minion   the forked JVM that runs your tests
 jzap-git      git ranges and unified diffs, resolved to line ranges
 jzap-report   console, JSON, mutation-testing-elements, HTML, PR annotations
 jzap-cli      the command line
+jzap-gradle   the Gradle adapter: source sets and toolchains in, project model out
 ```
 
 ## Verifying it against PIT
