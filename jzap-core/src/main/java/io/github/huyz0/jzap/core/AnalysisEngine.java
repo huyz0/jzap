@@ -270,6 +270,11 @@ public final class AnalysisEngine {
          * <p>Coverage depends on all of it: a change to any production class can change which
          * lines a test reaches, and a change to any test class can change what it runs.
          */
+        /** Module prefix for progress lines. A root project's path is ":", which reads badly. */
+        private String describe(ModuleModel module) {
+            return ":".equals(module.id()) ? "" : module.id() + ": ";
+        }
+
         private String coverageKey() {
             List<String> parts = new ArrayList<>();
             classHashes.forEach((name, hash) -> parts.add("class " + name + "=" + hash));
@@ -285,8 +290,8 @@ public final class AnalysisEngine {
                     cache.reuseCoverage(coverageKey(), mutatedClasses);
             if (cached.isPresent()) {
                 MutantCache.CachedCoverage reused = cached.get();
-                listener.phase("coverage", module.id() + ": reused from cache, "
-                        + reused.durations().size() + " tests");
+                listener.phase("coverage", describe(module) + "reused from cache, "
+                        + reused.durations().size() + " test(s)");
                 coverageMillis = millisSince(start);
                 return new Coverage(
                         new LinkedHashMap<>(reused.testsByLocation()),
@@ -395,7 +400,7 @@ public final class AnalysisEngine {
             Queue<List<Mutant>> queue = new ConcurrentLinkedQueue<>(byClass.values());
 
             int threads = Math.max(1, Math.min(model.threads(), byClass.size()));
-            listener.phase("execution", module.id() + ": " + covered.size() + " mutants on "
+            listener.phase("execution", describe(module) + covered.size() + " mutants on "
                     + threads + " thread(s)");
 
             Collection<Mutant> analysed = new ConcurrentLinkedQueue<>();
