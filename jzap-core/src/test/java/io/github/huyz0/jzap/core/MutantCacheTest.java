@@ -462,12 +462,73 @@ class MutantCacheTest {
     // ------------------------------------------------------------ test ids
 
     @Test
-    void theDeclaringClassOfAUniqueIdIsTheOutermostOne() {
+    void aReusedVerdictReportsThisRunsCoveringCount(@TempDir Path dir) {
+        // A killed mutant is reused on the strength of its killing test, so the rest of the
+        // covering set may have changed since. The count describes the current run.
+        Path file = dir.resolve("cache.txt");
+        MutantCache first = MutantCache.open(file, HEADER);
+        first.record(killed(4, TEST_ID), "class-hash", List.of(TEST_ID),
+                hashes("ex.CalcTest", "test-hash"));
+        first.write();
+
+        Optional<Mutant> reused = MutantCache.open(file, HEADER)
+                .reuse(fresh(4), "class-hash", List.of(TEST_ID, OTHER_TEST),
+                        hashes("ex.CalcTest", "test-hash", "ex.OtherTest", "o"));
+
+        assertTrue(reused.isPresent());
+        assertEquals(2, reused.get().coveringTests(),
+                "two tests cover it now, whatever the entry was written with");
+    }
+
+    @Test
+    void theDeclaringClassOfAUniqueIdIsTheClassThatHoldsTheTestsBytecode() {
         assertEquals("ex.CalcTest", MutantCache.declaringClassOf(TEST_ID));
-        assertEquals("ex.OuterTest", MutantCache.declaringClassOf(
-                        "[engine:junit-jupiter]/[class:ex.OuterTest]/[nested-class:Inner]"
-                                + "/[method:t()]"),
-                "a nested class lives in its outer class's file, so that is the right unit to hash");
+    }
+
+    @Test
+    void aNestedTestIsAttributedToTheNestedClassFile() {
+        // javac compiles a @Nested class to Outer$Inner.class and leaves Outer.class
+        // byte-identical, so hashing the outer class cannot see an edit to a nested test -- and a
+        // survivor covered only by that test would be reused after the edit that kills it.
+        assertEquals("ex.OuterTest$Inner", MutantCache.declaringClassOf(
+                "[engine:junit-jupiter]/[class:ex.OuterTest]/[nested-class:Inner]/[method:t()]"));
+        assertEquals("ex.OuterTest$Inner$Deeper", MutantCache.declaringClassOf(
+                "[engine:junit-jupiter]/[class:ex.OuterTest]/[nested-class:Inner]"
+                        + "/[nested-class:Deeper]/[method:t()]"));
+    }
+
+    @Test
+    void aKotestSpecIsAttributedToItsSpecClass() {
+        // Kotest names the class with [spec:...] and never emits [class:...]. These are the ids
+        // the kotest fixture actually produces.
+        assertEquals("ktest.ShippingFunSpec", MutantCache.declaringClassOf(
+                "[engine:kotest]/[spec:ktest.ShippingFunSpec]/[test:small baskets pay shipping]"));
+        assertEquals("ktest.SubtotalBehaviorSpec", MutantCache.declaringClassOf(
+                "[engine:kotest]/[spec:ktest.SubtotalBehaviorSpec]"
+                        + "/[test:a basket with three items]/[test:the subtotal is taken]"
+                        + "/[test:it is the sum of the prices]"));
+    }
+
+    @Test
+    void aSurvivorUnderAnEngineWithItsOwnIdFormatIsNotReusedAfterItsTestChanges(
+            @TempDir Path dir) {
+        // The soundness question behind the two tests above. If the declaring class cannot be
+        // recovered from the id, every test hashes as "?" -- the covering fingerprint then stops
+        // depending on the test's bytecode at all, and a survivor is reused even after the test
+        // that now kills it was edited.
+        String kotestId = "[engine:kotest]/[spec:ktest.ShippingFunSpec]/[test:pays shipping]";
+        Path file = dir.resolve("cache.txt");
+        MutantCache first = MutantCache.open(file, HEADER);
+        first.record(survived(9), "class-hash", List.of(kotestId),
+                hashes("ktest.ShippingFunSpec", "spec-hash"));
+        first.write();
+
+        Optional<Mutant> reused = MutantCache.open(file, HEADER)
+                .reuse(fresh(9), "class-hash", List.of(kotestId),
+                        hashes("ktest.ShippingFunSpec", "spec-hash-CHANGED"));
+
+        assertEquals(Optional.empty(), reused,
+                "the spec was edited, so the survivor has to be re-run");
     }
 
     @Test

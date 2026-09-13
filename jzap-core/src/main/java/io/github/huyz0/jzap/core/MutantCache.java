@@ -293,8 +293,12 @@ final class MutantCache {
                 .equals(fingerprint(coveringTests, testClassHashes))) {
             return Optional.empty();
         }
+        // The covering count comes from this run, not from the entry. A killed mutant is reused on
+        // the strength of its killing test alone, so the rest of its covering set is free to have
+        // changed, and the field is documented as how many tests execute the line -- now, not when
+        // the verdict was first reached.
         return Optional.of(mutant.withOutcome(entry.status(), entry.killingTest(),
-                entry.coveringTests(), 0, 0));
+                coveringTests.size(), 0, 0));
     }
 
     /**
@@ -426,19 +430,53 @@ final class MutantCache {
     }
 
     /**
-     * The test class a JUnit Platform unique id belongs to.
+     * The class file that holds a test's bytecode, from its JUnit Platform unique id.
      *
-     * <p>Ids look like {@code [engine:junit-jupiter]/[class:ex.FooTest]/[method:bar()]}. Nested
-     * classes appear as further {@code [nested-class:...]} segments, whose bytecode lives in the
-     * outer class's file only for the declaration, so the outermost class is the right unit to
-     * hash: a change anywhere in that file should invalidate.
+     * <p>This is what the cache's soundness rests on: the hash of this class is what tells the
+     * next run that a test has been edited. Getting the wrong class, or no class, does not fail
+     * loudly -- {@link #fingerprint} substitutes {@code "?"} for an unknown class, so the covering
+     * fingerprint silently stops depending on the test's bytecode and a survivor is reused even
+     * after the edit that would kill it.
+     *
+     * <p>Two id shapes have to be understood for that not to happen:
+     *
+     * <ul>
+     *   <li>{@code [engine:junit-jupiter]/[class:ex.FooTest]/[method:bar()]}, and with JUnit 5's
+     *       {@code @Nested}, further {@code [nested-class:Inner]} segments. Those are separate
+     *       class files: javac compiles {@code @Nested class Inner} to {@code Outer$Inner.class}
+     *       and leaves {@code Outer.class} byte-identical, so the nested class is the unit to
+     *       hash and the outer one would miss every edit inside it.
+     *   <li>{@code [engine:kotest]/[spec:ktest.FooSpec]/[test:...]}, which never emits a
+     *       {@code [class:]} segment at all. Kotest's spec segment names the class.
+     * </ul>
+     *
+     * <p>An id from some other engine, in a shape with no class in it, is returned unchanged: it
+     * will not match a scanned class, which costs reuse rather than correctness.
      */
     static String declaringClassOf(String uniqueId) {
-        int start = uniqueId.indexOf("[class:");
-        if (start < 0) {
-            return uniqueId;
+        StringBuilder name = new StringBuilder();
+        for (String segment : uniqueId.split("/")) {
+            String declared = valueOf(segment, "[class:");
+            if (declared == null) {
+                declared = valueOf(segment, "[spec:");
+            }
+            if (declared != null) {
+                name.setLength(0);
+                name.append(declared);
+                continue;
+            }
+            String nested = valueOf(segment, "[nested-class:");
+            if (nested != null && name.length() > 0) {
+                name.append('$').append(nested);
+            }
         }
-        int end = uniqueId.indexOf(']', start);
-        return end < 0 ? uniqueId : uniqueId.substring(start + "[class:".length(), end);
+        return name.length() == 0 ? uniqueId : name.toString();
+    }
+
+    /** The payload of one unique-id segment, or null if it is not of this kind. */
+    private static String valueOf(String segment, String prefix) {
+        return segment.startsWith(prefix) && segment.endsWith("]")
+                ? segment.substring(prefix.length(), segment.length() - 1)
+                : null;
     }
 }
