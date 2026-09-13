@@ -17,20 +17,60 @@ versioned rather than implicit in a CLI's argument list.
 
 ## Module layout
 
-    jzap-core          engine: scope resolution, mutators, schemata, coverage,
-                       scheduler, kill decisions. No build tool, no git, no VCS.
-    jzap-model         the project model + result schemas. The single seam.
-                       Depends on nothing.
-    jzap-git           diff -> changed line ranges (JGit). Optional at runtime.
-    jzap-report        mutation-testing-elements JSON, HTML, gitci-style PR JSON.
-    jzap-testkit       test-framework adapters behind an SPI
-                       (jzap-junit-platform, jzap-testng).
-    jzap-kotlin        optional Kotlin IR/PSI frontend for faithful mutant
-                       selection and descriptions. Falls back to bytecode+filters.
-    jzap-daemon        resident warm-JVM server + local protocol.
-    jzap-cli           `jzap --project-model model.json`. The universal entry point.
-    jzap-gradle        adapter: source sets, configurations, toolchains -> model.
-    jzap-maven         adapter: reactor, dependency resolution -> model.
+Nine modules with production code, in dependency order. Nothing below depends on anything
+above it, and `ModuleBoundariesTest` asserts that against the imports rather than against the
+build files, so the shape cannot drift one hurried import at a time.
+
+    jzap-model      the project model and result schemas: the single seam. Depends on
+                    nothing, and does not export Jackson -- a data module that pinned
+                    every consumer to a serialiser's version would be a poor seam.
+
+    jzap-wire       the controller/minion protocol, and the framing under it.
+    jzap-agent      the java agent: class overrides, coverage probes, the loop guard,
+                    and the schemata dispatch methods.
+                    Both are dependency-free on purpose. They are loaded into the JVM
+                    running the user's tests, where anything they dragged in could clash
+                    with the project's own dependencies, and a test enforces it by
+                    walking the agent jar's constant pool.
+
+    jzap-minion     the forked JVM that runs the user's tests. Speaks the wire, uses the
+                    agent, and knows nothing of the engine -- which is what lets the
+                    engine treat it as a process to be killed.
+
+    jzap-core       the engine: discovery, mutators, schemata, coverage, scheduling, the
+                    cache, and the controller's half of the protocol. Reaches the agent
+                    for compile-time constants only, and never git or reporting.
+
+    jzap-git        a diff to changed line ranges, via JGit.
+    jzap-report     console, jzap's own JSON, the mutation-testing-elements schema, HTML,
+                    and PR annotations.
+                    Siblings of the engine rather than layers of it: both see only the
+                    model. That is what lets a CI system hand the engine a patch file
+                    instead of a repository, and keeps reports independent of how
+                    analysis works.
+
+    jzap-cli        the composition root, and the only module that knows all of them.
+                    Also hosts the resident daemon, which reuses the wire's framing.
+
+    jzap-gradle     adapter: source sets, configurations, toolchains -> model.
+    jzap-maven      adapter: reactor, dependency resolution -> model.
+                    Neither links the engine; both fork the CLI. That keeps ASM off a
+                    buildscript classpath and lets the engine's version move
+                    independently of the plugin's.
+
+### How much each module exposes
+
+The rule is that a type is public only when something outside its own package needs it.
+`jzap-core` is nine public types of thirty-six; `jzap-cli` exposes one, its `Main`. Where a
+number looks high it is because the module *is* an interface: `jzap-model` is twelve of twelve,
+since the vocabulary is the whole point, and `jzap-agent` is seven of eight because instrumented
+bytecode calls its statics directly.
+
+`jzap-core` deliberately keeps thirty-six classes in one package rather than splitting into
+`cache`, `bytecode`, `engine` and `filter`. In Java that trade goes the wrong way: package-private
+is the only real encapsulation, so the split would force six of those types public to gain four
+directories. The `mutator` subpackage exists because it is the one boundary with a real contract.
+See that package's `package-info.java` for the grouping and the reasoning.
 
 ## The seam: a project model
 
