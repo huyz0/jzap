@@ -220,17 +220,24 @@ any figure is published.
 
 ## Not built yet
 
-The performance work that motivates the project. The engine is deliberately the slow,
-obvious one — `docs/delivery-plan.md` keeps it permanently as the oracle every optimisation is
-differentially tested against.
+Every milestone in [delivery-plan.md](delivery-plan.md) is now either delivered or closed with the
+measurement that decided against it. What remains is the work that cannot be done without
+publishing artefacts or without projects other than these fixtures:
 
-| Missing | Milestone |
+| Missing | Where it belongs |
 |---|---|
+| Release automation, signed artefacts, Maven Central and the Gradle Plugin Portal | M22 |
+| A thirty-day dogfood on a real external project | M22 |
+| Tier C corpora — parity runs against the fixtures here, not against real repositories | M4, M21 |
+| JUnit 4 and TestNG adapters behind the `jzap-testkit` SPI | M5 |
+| Kotest per-leaf selection, its isolation-mode matrix, coroutine fixtures | M16b |
+| Reactor-wide single invocation for Maven; the Gradle plugin already has one | M19 |
+| Analysis-JVM reuse across daemon invocations | M9 |
+| Android and Kotlin Multiplatform | M18 |
 
-Also absent: Tier C corpora (parity runs against the hand-written and generated fixtures only),
-and the JUnit 4 and TestNG adapters behind the `jzap-testkit` SPI. Kotest works at spec
-granularity; per-leaf selection, its isolation-mode matrix, and the coroutine fixtures remain
-outstanding from M16b.
+Several of those are the same shape: they need a project that is not a fixture. A mutation testing
+tool that has only ever been run on code written to exercise it knows less about itself than it
+appears to.
 
 ## Measured and deliberately not built
 

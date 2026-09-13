@@ -276,9 +276,8 @@ Every milestone in this phase carries the same two standing gates, in addition t
 
 ## M8 · Parallel execution, then the schemata engine
 
-**Not started.** Split into two deliverables after building the reference engine, because they
-are independent and the first is far cheaper per unit of speed. The engine is currently
-single-threaded, so a laptop with eight cores is doing an eighth of the work it could.
+**Both halves done.** Split into two deliverables after building the reference engine, because they
+are independent and the first is far cheaper per unit of speed.
 
 ### M8a · Parallel execution
 

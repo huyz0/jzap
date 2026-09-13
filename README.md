@@ -6,11 +6,13 @@ Mutation testing measures whether your tests would actually notice a bug. jzap c
 compiled code in small, realistic ways — flips a comparison, swaps an operator, drops a call —
 and reports every change your test suite fails to catch. Each survivor is a concrete gap.
 
-**Status: a working reference engine.** The pipeline runs end to end, and its verdicts agree
-with PIT on all 1051 mutants the two tools share across both fixtures. The performance work
-that motivates the project — mutant schemata, a warm daemon, incremental caching, parallelism —
-is designed but not yet built. See [docs/status.md](docs/status.md) for exactly what exists,
-including the measured timings.
+**Status: working, measured, and faster than PIT.** On the benchmark fixture, single-threaded and
+with the same mutators: **8.9s against PIT's 29.6s**, while analysing 40 *more* mutants. Verdicts
+agree with PIT on all 1051 mutants the two tools share. A warm cache takes a re-run to 0.43s, and a
+resident daemon takes it to 0.17s.
+
+Java and Kotlin, JUnit 5 and Kotest, Gradle and Maven, single module and whole reactor.
+See [docs/status.md](docs/status.md) for exactly what exists and what does not.
 
 ## Gradle
 
