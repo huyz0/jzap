@@ -263,7 +263,7 @@ public abstract class JzapTask extends DefaultTask {
                     "disabledFilters": [%s]
                   },
                   "reporters": [%s],
-                  "threads": %d
+                  "threads": %s
                 }
                 """.formatted(
                 String.join(",\n", modules),
@@ -274,7 +274,10 @@ public abstract class JzapTask extends DefaultTask {
                 strings(getMutators().get()),
                 getMutateLoopCounters().getOrElse(false) ? quote("LOOP_COUNTER") : "",
                 strings(getReporters().get()),
-                getThreads().getOrElse(0));
+                // Rendered with %s and Integer.toString rather than %d: String.formatted uses the
+                // default locale, and %d writes digits in that locale's own number system, which
+                // would put characters into the model that no JSON parser accepts.
+                Integer.toString(getThreads().getOrElse(0)));
         try {
             Files.createDirectories(model.getParent());
             Files.writeString(model, json, StandardCharsets.UTF_8);

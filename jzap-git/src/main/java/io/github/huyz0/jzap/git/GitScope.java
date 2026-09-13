@@ -2,7 +2,6 @@ package io.github.huyz0.jzap.git;
 
 import io.github.huyz0.jzap.model.ChangedLines;
 import io.github.huyz0.jzap.model.Scope;
-import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.diff.Edit;
@@ -79,7 +78,6 @@ public final class GitScope implements AutoCloseable {
     public ChangedLines changedLines(String from, String to, boolean classGranularity) {
         ChangedLines changed = ChangedLines.empty();
         try (ObjectReader reader = repository.newObjectReader();
-             Git git = new Git(repository);
              DiffFormatter formatter = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
 
             formatter.setRepository(repository);

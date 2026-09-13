@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -139,6 +140,33 @@ class JzapTaskActionTest {
         assertTrue(model.contains("\"json\", \"html\""), model);
         assertTrue(model.contains("\"LOOP_COUNTER\""),
                 "asking to mutate loop counters disables the filter by name: " + model);
+    }
+
+    @Test
+    void theModelIsAsciiJsonUnderALocaleWithItsOwnDigits(@TempDir Path dir) throws Exception {
+        // String.formatted uses the default locale, so a %d in the model template renders the
+        // thread count in whatever number system that locale uses. The model is then written with
+        // characters no JSON parser accepts, and jzap fails on a file it wrote itself -- for every
+        // user whose machine is set to one of these locales.
+        Locale was = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("ar-SA-u-nu-arab"));
+            JzapTask task = taskIn(dir);
+            task.getEngineClasspath().setFrom(List.of(new File(dir.toFile(), "fake-engine.jar")));
+            task.getMutableCodePaths().setFrom(
+                    List.of(Files.createDirectories(dir.resolve("classes")).toFile()));
+            task.getThreads().set(4);
+
+            String model = modelWrittenBy(task);
+
+            assertTrue(model.contains("\"threads\": 4"),
+                    "the thread count has to be written in ASCII digits: " + model);
+            assertEquals(model, new String(model.getBytes(StandardCharsets.US_ASCII),
+                            StandardCharsets.US_ASCII),
+                    "the whole model has to survive a round trip through ASCII");
+        } finally {
+            Locale.setDefault(was);
+        }
     }
 
     @Test

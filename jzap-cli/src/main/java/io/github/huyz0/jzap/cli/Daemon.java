@@ -12,8 +12,10 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -58,11 +60,12 @@ final class Daemon {
     static void serve(Path modelFile, PrintStream log) throws IOException {
         Path portFile = portFile(modelFile);
         Files.createDirectories(portFile.getParent());
+        int ourPort = -1;
 
         try (ServerSocket server = new ServerSocket(0, 4, InetAddress.getLoopbackAddress())) {
-            Files.writeString(portFile, Integer.toString(server.getLocalPort()),
-                    StandardCharsets.UTF_8);
-            log.println("jzap daemon listening on port " + server.getLocalPort()
+            ourPort = server.getLocalPort();
+            publishPort(portFile, ourPort);
+            log.println("jzap daemon listening on port " + ourPort
                     + " for " + modelFile.toAbsolutePath());
             AtomicLong lastUsed = new AtomicLong(System.currentTimeMillis());
             server.setSoTimeout(60_000);
@@ -89,7 +92,44 @@ final class Daemon {
                 lastUsed.set(System.currentTimeMillis());
             }
         } finally {
-            Files.deleteIfExists(portFile);
+            unpublishPort(portFile, ourPort);
+        }
+    }
+
+    /**
+     * Records the port, atomically.
+     *
+     * <p>Written to a temporary file and moved into place so a client never reads a half-written
+     * one. A partial read parses as no daemon, which starts a second daemon for a project that
+     * already has one.
+     */
+    private static void publishPort(Path portFile, int port) throws IOException {
+        Path temporary = portFile.resolveSibling(portFile.getFileName() + ".tmp" + ProcessHandle.current().pid());
+        Files.writeString(temporary, Integer.toString(port), StandardCharsets.UTF_8);
+        try {
+            Files.move(temporary, portFile, StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(temporary, portFile, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    /**
+     * Removes the port file, but only while it still names this daemon.
+     *
+     * <p>Two daemons can exist for one project, because starting one is not serialised: the second
+     * overwrites the first's port file and takes over. The first then has no clients and leaves on
+     * its idle timeout half an hour later -- and deleting the file unconditionally at that point
+     * would deregister the daemon that is actually serving, so the next invocation starts a third.
+     */
+    private static void unpublishPort(Path portFile, int port) {
+        try {
+            String recorded = Files.readString(portFile, StandardCharsets.UTF_8).trim();
+            if (recorded.equals(Integer.toString(port))) {
+                Files.deleteIfExists(portFile);
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // Gone already, or unreadable. Either way there is nothing of ours left to remove.
         }
     }
 

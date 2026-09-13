@@ -34,6 +34,12 @@ import java.util.Optional;
  */
 final class SourceMap {
 
+    /**
+     * Most output lines one {@code *L} entry may declare. A real entry covers at most the lines of
+     * one file, so this is orders of magnitude above anything kotlinc emits.
+     */
+    private static final int MAX_MAPPINGS_PER_RANGE = 1_000_000;
+
     private final Map<Integer, Integer> outputToInput;
     private final Map<Integer, String> fileNames;
     private final Map<Integer, Integer> outputToFile;
@@ -158,9 +164,17 @@ final class SourceMap {
             return;
         }
 
+        // Bounded because the counts come from an attribute nothing validates. ClassReader treats
+        // SourceDebugExtension as an opaque string, so a corrupt one can declare a repeat count of
+        // two billion, and the loop below would then fill a map until the heap ran out -- during
+        // discovery, with no indication of which class was responsible.
+        int span = Math.max(1, outputIncrement);
+        if ((long) repeatCount * span > MAX_MAPPINGS_PER_RANGE) {
+            return;
+        }
         for (int i = 0; i < repeatCount; i++) {
-            for (int j = 0; j < Math.max(1, outputIncrement); j++) {
-                int outputLine = outputStart + i * Math.max(1, outputIncrement) + j;
+            for (int j = 0; j < span; j++) {
+                int outputLine = outputStart + i * span + j;
                 // First mapping wins: later call sites repeat the same input lines, and the
                 // output ranges do not overlap, so this only guards against malformed input.
                 outputToInput.putIfAbsent(outputLine, inputStart + i);

@@ -195,7 +195,7 @@ public class MutationCoverageMojo extends AbstractMojo {
                     "mutators": []
                   },
                   "reporters": [%s],
-                  "threads": %d
+                  "threads": %s
                 }
                 """.formatted(
                 quote(project.getGroupId() + ":" + project.getArtifactId()),
@@ -209,7 +209,10 @@ public class MutationCoverageMojo extends AbstractMojo {
                 split(includeClasses),
                 split(excludeClasses),
                 split(reporters),
-                threads);
+                // Rendered with %s and Integer.toString rather than %d: String.formatted uses the
+                // default locale, and %d writes digits in that locale's own number system, which
+                // would put characters into the model that no JSON parser accepts.
+                Integer.toString(threads));
         try {
             Files.createDirectories(model.getParent());
             Files.writeString(model, json, StandardCharsets.UTF_8);

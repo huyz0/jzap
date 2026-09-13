@@ -13,6 +13,12 @@ import java.nio.charset.StandardCharsets;
 /** Framed read/write over a socket, used identically by both ends. */
 public final class Channel implements AutoCloseable {
 
+    /**
+     * Largest single string or byte array a frame may declare. Well above anything real -- the
+     * biggest thing sent is a transformed class -- and far below what exhausts a heap.
+     */
+    private static final int MAX_FRAME_BYTES = 64 * 1024 * 1024;
+
     private final Socket socket;
     private final DataInputStream in;
     private final DataOutputStream out;
@@ -111,17 +117,34 @@ public final class Channel implements AutoCloseable {
     }
 
     public String readString() throws IOException {
-        int len = in.readInt();
-        byte[] b = new byte[len];
+        byte[] b = new byte[readLength("a string")];
         in.readFully(b);
         return new String(b, StandardCharsets.UTF_8);
     }
 
     public byte[] readBytes() throws IOException {
-        int len = in.readInt();
-        byte[] b = new byte[len];
+        byte[] b = new byte[readLength("a byte array")];
         in.readFully(b);
         return b;
+    }
+
+    /**
+     * A length prefix, checked before it is used to size an array.
+     *
+     * <p>Not about untrusted input -- both ends of this channel are processes jzap started, on the
+     * loopback interface. It is about what a desynchronised stream does next. A length read from
+     * the middle of some other message is an arbitrary int, and using it directly either throws
+     * {@link NegativeArraySizeException}, which says nothing about the real problem, or asks for
+     * gigabytes and takes the whole run down with an {@link OutOfMemoryError}. Failing here names
+     * the actual fault instead, and costs one comparison per frame.
+     */
+    private int readLength(String what) throws IOException {
+        int len = in.readInt();
+        if (len < 0 || len > MAX_FRAME_BYTES) {
+            throw new WireException("refusing to read " + what + " of " + len + " bytes: the "
+                    + "channel is out of step with the other end");
+        }
+        return len;
     }
 
     @Override

@@ -84,16 +84,21 @@ final class MinionProcess implements AutoCloseable {
             ProcessBuilder builder = new ProcessBuilder(command);
             builder.redirectErrorStream(true);
             Process process = builder.start();
-            Socket socket;
+            // From here on the process is running, and every failure path has to kill it: if this
+            // method throws, nothing is left holding a reference to stop it with, and an abandoned
+            // analysis JVM keeps a whole test classpath loaded until the build ends.
             try {
-                socket = server.accept();
+                return new MinionProcess(process, new Channel(server.accept()));
             } catch (SocketTimeoutException e) {
                 process.destroyForcibly();
                 throw new WireException("the analysis JVM did not connect within "
                         + CONNECT_TIMEOUT_MILLIS / 1000 + "s. Command was:\n  "
                         + String.join(" ", command), e);
+            } catch (IOException | RuntimeException e) {
+                process.destroyForcibly();
+                throw new WireException("cannot open a channel to the analysis JVM. Command was:"
+                        + "\n  " + String.join(" ", command), e);
             }
-            return new MinionProcess(process, new Channel(socket));
         } catch (IOException e) {
             throw new WireException("cannot start an analysis JVM", e);
         }
@@ -106,7 +111,8 @@ final class MinionProcess implements AutoCloseable {
         List<String> command = new ArrayList<>();
         command.add(Path.of(javaHome, "bin", "java").toString());
         // Always: the agent is what installs mutants and collects probes, so a minion without it
-        // cannot do either job. Minion.requireHarness refuses to run tests if it is missing.
+        // cannot do either job. The minion refuses to run tests at all if it is missing, rather
+        // than reporting every mutant as having survived.
         command.add("-javaagent:" + jars.agent());
         command.addAll(module.jvmArgs());
         command.add("-cp");
