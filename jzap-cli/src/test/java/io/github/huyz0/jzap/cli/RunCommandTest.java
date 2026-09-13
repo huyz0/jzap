@@ -269,4 +269,37 @@ class RunCommandTest {
         assertTrue(second.out().contains("reused from the cache"),
                 "the second run should say how much it did not have to do: " + second.out());
     }
+
+    /**
+     * An analysis that throws is exit code 3, not 1.
+     *
+     * <p>Exit 1 means "the result is below your bar" and exit 3 means "there is no result". CI
+     * treats those differently: one is a code-quality gate and the other is a broken tool or a
+     * broken build, and conflating them sends people to look in the wrong place.
+     */
+    @Test
+    void anAnalysisThatCannotRunFailsWithItsOwnExitCode(@TempDir Path dir) throws Exception {
+        // A code path that is a file but not a readable archive. Scanning it is the first thing
+        // an analysis does, and it cannot be recovered from.
+        Path notAJar = Files.writeString(dir.resolve("classes.jar"), "this is not a zip");
+        Path model = CliFixture.write(dir.resolve("broken-model.json"), """
+                {
+                  "schemaVersion": 1,
+                  "threads": 1,
+                  "reporters": ["json"],
+                  "scope": { "kind": "ALL" },
+                  "modules": [
+                    { "id": ":broken", "mutableCodePaths": ["%s"] }
+                  ]
+                }
+                """.formatted(notAJar.toString().replace("\\", "\\\\")));
+
+        Invocation result = run("run", "-m", model.toString(),
+                "-o", dir.resolve("reports").toString(), "-q");
+
+        assertEquals(RunCommand.EXIT_FAILED, result.exitCode(), result.all());
+        assertTrue(result.err().contains("analysis failed"), result.err());
+        assertTrue(result.err().contains("classes.jar"),
+                "the message has to name what could not be read: " + result.err());
+    }
 }

@@ -1,5 +1,6 @@
 package io.github.huyz0.jzap.e2e;
 
+import io.github.huyz0.jzap.agent.MutantSwitch;
 import io.github.huyz0.jzap.core.MinionProcess;
 import io.github.huyz0.jzap.core.RuntimeJars;
 import io.github.huyz0.jzap.model.ModuleModel;
@@ -147,6 +148,98 @@ class MinionFailureTest {
             assertTrue(e.getMessage().contains("PREPARE_TESTS")
                             || e.getMessage().contains("LIST_TESTS"),
                     "the message has to name the command that was missing: " + e.getMessage());
+        }
+    }
+
+    // ------------------------------------------------------------ timeouts and refusals
+
+    /**
+     * The wall-clock backstop, for the cases the loop guard cannot see.
+     *
+     * <p>The guard counts iterations, which is what makes a runaway mutant a deterministic
+     * verdict. It cannot see a mutant that blocks rather than loops, or one whose exception is
+     * swallowed by code catching Throwable, so the read timeout stays as a backstop -- and a
+     * timeout has to arrive as HungException, because the only way to stop the JVM is to kill it.
+     */
+    @Test
+    void aTestThatOutlastsItsTimeoutIsReportedAsHung() {
+        ModuleModel hang = Fixture.hang().model(io.github.huyz0.jzap.model.Scope.all()).modules().get(0);
+
+        try (MinionProcess minion = MinionProcess.start(hang, RuntimeJars.discover())) {
+            minion.prepareTests(hang.testClassPaths());
+            List<String> tests = discoverIn(hang);
+
+            MinionProcess.HungException e = assertThrows(MinionProcess.HungException.class,
+                    () -> minion.runTests(tests, Long.MAX_VALUE, 1, MutantSwitch.NONE));
+
+            assertTrue(e.getMessage().contains("did not finish within"), e.getMessage());
+            assertTrue(e.getMessage().contains("infinite loop"),
+                    "the message should say what this usually means: " + e.getMessage());
+            minion.destroy();
+        }
+    }
+
+    @Test
+    void aCoverageRunThatOutlastsItsTimeoutIsReportedAsHung() {
+        ModuleModel hang = Fixture.hang().model(io.github.huyz0.jzap.model.Scope.all()).modules().get(0);
+
+        try (MinionProcess minion = MinionProcess.start(hang, RuntimeJars.discover())) {
+            // listTests is what builds the harness in the coverage phase.
+            List<String> tests = minion.listTests(hang.testClassPaths());
+            assertFalse(tests.isEmpty());
+
+            MinionProcess.HungException e = assertThrows(MinionProcess.HungException.class,
+                    () -> minion.runTestForCoverage(tests.get(0), 1));
+
+            assertTrue(e.getMessage().contains(tests.get(0)),
+                    "the message names the test, since the run is abandoned: " + e.getMessage());
+            minion.destroy();
+        }
+    }
+
+    /**
+     * Bytecode the JVM refuses is reported, and only once the class is actually loaded.
+     *
+     * <p>Installing an override for a class that has not been loaded cannot fail: the bytes are
+     * recorded and the load-time transformer serves them later. It is retransforming a loaded
+     * class that the JVM can reject, which is why the tests are run first here.
+     */
+    @Test
+    void bytecodeTheJvmRefusesIsReportedRatherThanInstalledSilently() {
+        ModuleModel module = fixtureModule();
+        try (MinionProcess minion = MinionProcess.start(module, RuntimeJars.discover())) {
+            List<String> tests = minion.listTests(module.testClassPaths());
+            // Running them loads the fixture's classes, which is what makes the next call a
+            // retransformation rather than a recording.
+            minion.runTests(tests, Long.MAX_VALUE, 60_000, MutantSwitch.NONE);
+
+            WireException e = assertThrows(WireException.class,
+                    () -> minion.setOverride("sample.Discount", new byte[]{1, 2, 3, 4}));
+
+            assertTrue(e.getMessage().contains("sample.Discount"),
+                    "the message has to name the class: " + e.getMessage());
+            assertTrue(minion.isAlive(),
+                    "one unusable mutant must not cost the whole analysis JVM");
+        }
+    }
+
+    @Test
+    void anOverrideForAClassNotYetLoadedIsRecordedWithoutComplaint() {
+        ModuleModel module = fixtureModule();
+        try (MinionProcess minion = MinionProcess.start(module, RuntimeJars.discover())) {
+            minion.prepareTests(module.testClassPaths());
+
+            // Nothing is loaded yet, so there is nothing to retransform and nothing to reject.
+            minion.setOverride("sample.NeverLoaded", new byte[]{1, 2, 3, 4});
+            minion.clearOverrides();
+
+            assertTrue(minion.isAlive());
+        }
+    }
+
+    private static List<String> discoverIn(ModuleModel module) {
+        try (MinionProcess discovery = MinionProcess.start(module, RuntimeJars.discover())) {
+            return discovery.listTests(module.testClassPaths());
         }
     }
 }

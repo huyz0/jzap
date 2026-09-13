@@ -134,6 +134,42 @@ val coverageReport = tasks.register<JacocoReport>("coverageReport") {
     }
 }
 
+/**
+ * Fails the build if coverage slips.
+ *
+ * <p>A ratchet rather than the target. The floors are a little under what the suite currently
+ * achieves, so ordinary variation does not fail a build, and the point is that a change which
+ * drops a swathe of covered code has to say so rather than pass quietly. docs/coverage.md records
+ * where the number stands, what the remaining gap is made of, and what closing it would cost.
+ */
+val coverageFloorLine = 0.93
+val coverageFloorBranch = 0.85
+
+tasks.register<JacocoCoverageVerification>("coverageGate") {
+    group = "verification"
+    description = "Fails if aggregate coverage falls below the recorded floor."
+    dependsOn(coverageReport)
+
+    executionData.setFrom(coverageReport.get().executionData)
+    sourceDirectories.setFrom(coverageReport.get().sourceDirectories)
+    classDirectories.setFrom(coverageReport.get().classDirectories)
+
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = coverageFloorLine.toBigDecimal()
+            }
+            limit {
+                counter = "BRANCH"
+                value = "COVEREDRATIO"
+                minimum = coverageFloorBranch.toBigDecimal()
+            }
+        }
+    }
+}
+
 /** Prints the aggregate ratios, because a report nobody reads is not a check. */
 tasks.register("coverage") {
     group = "verification"

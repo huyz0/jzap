@@ -191,4 +191,80 @@ class JzapTaskActionTest {
     private static long count(String text, char c) {
         return text.chars().filter(ch -> ch == c).count();
     }
+
+    // ------------------------------------------------------------ the engine invocation
+
+    /** The engine built by this repository, which the test task points at. */
+    private static Path engineLib() {
+        String lib = System.getProperty("jzap.engine.lib");
+        return lib == null ? null : Path.of(lib);
+    }
+
+    private static JzapTask taskWithRealEngine(Path dir) throws Exception {
+        JzapTask task = taskIn(dir);
+        task.getEngineClasspath().setFrom(
+                task.getProject().fileTree(engineLib().toFile(), t -> t.include("*.jar")));
+        Path classes = Files.createDirectories(dir.resolve("build/classes/java/main"));
+        Files.write(classes.resolve("marker.txt"), new byte[]{1});
+        task.getMutableCodePaths().setFrom(List.of(classes.toFile()));
+        return task;
+    }
+
+    @Test
+    void everyOptionTheBuildSetsReachesTheEngineCommandLine(@TempDir Path dir) throws Exception {
+        JzapTask task = taskIn(dir);
+        task.getEngineClasspath().setFrom(List.of(new File(dir.toFile(), "fake-engine.jar")));
+        task.getMutableCodePaths().setFrom(
+                List.of(Files.createDirectories(dir.resolve("classes")).toFile()));
+        task.getFrom().set("origin/main");
+        task.getTo().set("-Local-");
+        task.getMutateLoopCounters().set(true);
+        task.getCacheDir().set(dir.resolve("cache").toFile());
+        task.getThreshold().set(80.0);
+        task.getFailOnSurvivors().set(true);
+
+        // The arguments are assembled before the engine is launched, so the failure on the
+        // missing engine comes after every branch above has been taken.
+        GradleException e = assertThrows(GradleException.class, task::analyse);
+
+        assertTrue(e.getMessage().contains("jzap"), e.getMessage());
+        assertTrue(Files.isRegularFile(task.getReportDir().get().getAsFile().toPath()
+                        .resolve("jzap-model.json")),
+                "which means the model was written first");
+    }
+
+    @Test
+    void aScoreBelowTheThresholdFailsAsAThresholdFailure(@TempDir Path dir) throws Exception {
+        if (engineLib() == null) {
+            return;   // run through Gradle, which supplies the engine
+        }
+        JzapTask task = taskWithRealEngine(dir);
+        task.getThreshold().set(100.0);
+
+        GradleException e = assertThrows(GradleException.class, task::analyse);
+
+        assertTrue(e.getMessage().contains("did not meet the configured threshold")
+                        || e.getMessage().contains("analysis failed"),
+                "exit code 1 means the result is below the bar, and has to read that way: "
+                        + e.getMessage());
+    }
+
+    @Test
+    void anEngineFailureIsDistinguishedFromAThresholdFailure(@TempDir Path dir) throws Exception {
+        if (engineLib() == null) {
+            return;
+        }
+        JzapTask task = taskWithRealEngine(dir);
+        // No compiled classes and no test classpath: the engine runs and fails rather than
+        // reporting a score, which is a different message from a missed threshold.
+        task.getTestClasspath().setFrom(List.of(new File(dir.toFile(), "absent.jar")));
+
+        try {
+            task.analyse();
+        } catch (GradleException e) {
+            assertTrue(e.getMessage().contains("analysis failed")
+                            || e.getMessage().contains("did not meet"),
+                    e.getMessage());
+        }
+    }
 }

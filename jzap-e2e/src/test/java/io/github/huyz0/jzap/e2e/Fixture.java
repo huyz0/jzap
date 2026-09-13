@@ -53,6 +53,16 @@ final class Fixture {
         return new Fixture("jzap.parallel.descriptor", ":fixtures:parallel-java");
     }
 
+    /**
+     * A fixture whose mutant blocks rather than loops.
+     *
+     * <p>The loop guard counts back edges, so blocking trips nothing: this is the one case the
+     * wall-clock backstop has to catch on its own.
+     */
+    static Fixture blocking() {
+        return new Fixture("jzap.blocking.descriptor", ":fixtures:blocking-java");
+    }
+
     static Fixture kotest() {
         return new Fixture("jzap.kotest.descriptor", ":fixtures:kotest-sample");
     }
