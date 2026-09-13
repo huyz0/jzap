@@ -48,4 +48,40 @@ class PricingTest {
         assertEquals(30, checkoutOnline(10))
         assertEquals(45, checkoutInStore(10))
     }
+
+    @Test
+    fun `a basket sums what is added to it`() {
+        val basket = Basket(limit = 100)
+        assertTrue(basket.isEmpty)
+        assertEquals(0, basket.total)
+
+        assertEquals(14, basket.addLabelled("book", 10))
+        assertEquals(10, basket.total)
+        assertFalse(basket.isEmpty)
+    }
+
+    @Test
+    fun `a basket is within its limit exactly at the limit`() {
+        val basket = Basket(limit = 10)
+        basket.addLabelled("a", 10)
+
+        // At the boundary, so moving <= to < is detected rather than surviving.
+        assertTrue(basket.withinLimit())
+
+        basket.addLabelled("b", 1)
+        assertFalse(basket.withinLimit())
+
+        basket.limit = 100
+        assertTrue(basket.withinLimit())
+    }
+
+    @Test
+    fun `copying an order replaces only what was named`() {
+        val order = Order(id = "a1", amount = 30)
+        val copy = renamed(order, "b2")
+
+        assertEquals("b2", copy.id)
+        assertEquals(30, copy.amount)
+        assertEquals("GBP", copy.currency)
+    }
 }

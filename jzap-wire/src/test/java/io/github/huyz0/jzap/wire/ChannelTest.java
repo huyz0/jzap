@@ -169,6 +169,74 @@ class ChannelTest {
         pair.listener().close();
     }
 
+    /**
+     * Every write reports a broken channel rather than losing it.
+     *
+     * <p>Writes are buffered, so a small one lands in memory and only a flush notices the socket
+     * has gone. These force the buffer past its capacity, which is what happens naturally when
+     * the thing being written is a class file.
+     */
+    @Test
+    void aBrokenChannelIsReportedByWhicheverWriteFillsTheBuffer() throws Exception {
+        byte[] big = new byte[64 * 1024];
+
+        Pair bytes = connected();
+        bytes.client().close();
+        assertThrows(WireException.class, () -> bytes.client().writeBytes(big));
+        bytes.server().close();
+        bytes.listener().close();
+
+        Pair strings = connected();
+        strings.client().close();
+        assertThrows(WireException.class,
+                () -> strings.client().writeString("x".repeat(64 * 1024)));
+        strings.server().close();
+        strings.listener().close();
+
+        Pair ints = connected();
+        ints.client().close();
+        assertThrows(WireException.class, () -> {
+            for (int i = 0; i < 64 * 1024; i++) {
+                ints.client().writeInt(i);
+            }
+        });
+        ints.server().close();
+        ints.listener().close();
+
+        Pair longs = connected();
+        longs.client().close();
+        assertThrows(WireException.class, () -> {
+            for (int i = 0; i < 64 * 1024; i++) {
+                longs.client().writeLong(i);
+            }
+        });
+        longs.server().close();
+        longs.listener().close();
+
+        Pair singleBytes = connected();
+        singleBytes.client().close();
+        assertThrows(WireException.class, () -> {
+            for (int i = 0; i < 64 * 1024; i++) {
+                singleBytes.client().writeByte(i);
+            }
+        });
+        singleBytes.server().close();
+        singleBytes.listener().close();
+    }
+
+    @Test
+    void aTruncatedPayloadIsAnEndOfStreamRatherThanASilentShortRead() throws Exception {
+        try (Pair pair = connected()) {
+            // A length prefix promising more than follows is what a killed minion leaves behind.
+            pair.client().writeInt(1024);
+            pair.client().flush();
+            pair.client().close();
+
+            assertThrows(EOFException.class, () -> pair.server().readBytes(),
+                    "readFully has to fail rather than hand back a half-filled array");
+        }
+    }
+
     @Test
     void closingTwiceIsHarmless() throws Exception {
         Pair pair = connected();

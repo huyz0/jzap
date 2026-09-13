@@ -41,17 +41,20 @@ public final class GitScope implements AutoCloseable {
     private final Repository repository;
 
     public GitScope(Path anyPathInsideRepository) {
+        // Checked before build() rather than after. build() throws its own
+        // "One of setGitDir or setWorkTree must be called" when findGitDir found nothing, which
+        // tells a user running outside a checkout -- a source tarball, a container that did not
+        // copy .git -- nothing at all about what jzap wanted or what to do instead.
+        FileRepositoryBuilder builder = new FileRepositoryBuilder()
+                .findGitDir(anyPathInsideRepository.toFile())
+                .readEnvironment();
+        if (builder.getGitDir() == null) {
+            throw new IllegalArgumentException("no git repository found at or above "
+                    + anyPathInsideRepository.toAbsolutePath()
+                    + ". Use a patch file instead if this tree is not a git checkout.");
+        }
         try {
-            Repository found = new FileRepositoryBuilder()
-                    .findGitDir(anyPathInsideRepository.toFile())
-                    .readEnvironment()
-                    .build();
-            if (found.getDirectory() == null) {
-                throw new IllegalArgumentException("no git repository found at or above "
-                        + anyPathInsideRepository.toAbsolutePath()
-                        + ". Use a patch file instead if this tree is not a git checkout.");
-            }
-            this.repository = found;
+            this.repository = builder.build();
         } catch (IOException e) {
             throw new UncheckedIOException("cannot open the git repository containing "
                     + anyPathInsideRepository, e);

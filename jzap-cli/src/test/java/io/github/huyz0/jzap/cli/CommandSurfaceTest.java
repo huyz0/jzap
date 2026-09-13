@@ -281,4 +281,82 @@ class CommandSurfaceTest {
         assertNull(ScopeResolution.resolve(options.read(), dir),
                 "null means everything is in scope, which is what the engine expects");
     }
+
+    // ------------------------------------------------------------ scoped inventories
+
+    @Test
+    void listMutantsCanBeScopedToAPatch(@TempDir Path dir) throws Exception {
+        Path model = new CliFixture().writeModel(dir);
+        Invocation everything = run("list-mutants", "-m", model.toString());
+        int all = everything.out().strip().split("\n").length;
+
+        // A patch touching one line of one fixture file. The inventory has to narrow to it
+        // without running anything, which is what makes a pull-request check cheap.
+        Path patch = CliFixture.write(dir.resolve("one-line.patch"), """
+                diff --git a/sample/Discount.java b/sample/Discount.java
+                index 1111111..2222222 100644
+                --- a/sample/Discount.java
+                +++ b/sample/Discount.java
+                @@ -17,1 +17,1 @@
+                -    old line
+                +    new line
+                """);
+
+        Invocation scoped = run("list-mutants", "-m", model.toString(),
+                "--patch", patch.toString());
+
+        assertEquals(RunCommand.EXIT_OK, scoped.exitCode(), scoped.all());
+        int narrowed = scoped.out().strip().isEmpty()
+                ? 0
+                : scoped.out().strip().split("\n").length;
+        assertTrue(narrowed < all,
+                "patch scoping has to narrow the inventory: " + narrowed + " of " + all);
+        assertTrue(scoped.err().contains("mutants in scope"), scoped.err());
+    }
+
+    @Test
+    void listMutantsWithAPatchThatTouchesNothingFindsNoMutants(@TempDir Path dir) {
+        Path model = new CliFixture().writeModel(dir);
+        Path patch = CliFixture.write(dir.resolve("elsewhere.patch"), """
+                diff --git a/nothing/Absent.java b/nothing/Absent.java
+                index 1111111..2222222 100644
+                --- a/nothing/Absent.java
+                +++ b/nothing/Absent.java
+                @@ -1,1 +1,1 @@
+                -    old
+                +    new
+                """);
+
+        Invocation result = run("list-mutants", "-m", model.toString(),
+                "--patch", patch.toString());
+
+        assertEquals(RunCommand.EXIT_OK, result.exitCode(), result.all());
+        assertTrue(result.out().strip().isEmpty(), result.out());
+        assertTrue(result.err().contains("0 mutants in scope"),
+                "an empty inventory is the healthy case for most pull requests: " + result.err());
+    }
+
+    @Test
+    void listMutantsAtClassGranularityWidensToTheWholeFile(@TempDir Path dir) {
+        Path model = new CliFixture().writeModel(dir);
+        Path patch = CliFixture.write(dir.resolve("one-line.patch"), """
+                diff --git a/sample/Discount.java b/sample/Discount.java
+                index 1111111..2222222 100644
+                --- a/sample/Discount.java
+                +++ b/sample/Discount.java
+                @@ -17,1 +17,1 @@
+                -    old line
+                +    new line
+                """);
+
+        Invocation byLine = run("list-mutants", "-m", model.toString(),
+                "--patch", patch.toString());
+        Invocation byClass = run("list-mutants", "-m", model.toString(),
+                "--patch", patch.toString(), "--scope", "class");
+
+        assertEquals(RunCommand.EXIT_OK, byClass.exitCode(), byClass.all());
+        assertTrue(byClass.out().strip().split("\n").length
+                        >= byLine.out().strip().split("\n").length,
+                "class granularity can only widen what line granularity selected");
+    }
 }

@@ -103,14 +103,4 @@ public record MutantFilters(
         active.sort(String::compareTo);
         return String.join(",", active);
     }
-
-    /** Ids of the filters that are on unless switched off, for the command line to offer. */
-    public static List<String> defaultOnIds() {
-        return List.of(LoopCounterFilter.ID, KotlinFilter.ID);
-    }
-
-    /** Ids of the filters that are off unless asked for, for the command line to offer. */
-    public static List<String> optionalIds() {
-        return List.of(EquivalenceFilter.ID, AridFilter.ID, ONE_PER_LINE);
-    }
 }
