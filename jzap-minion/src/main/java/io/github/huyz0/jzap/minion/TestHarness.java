@@ -47,7 +47,21 @@ final class TestHarness {
         this.classpathRoots = List.copyOf(classpathRoots);
     }
 
-    /** Unique ids of every executable test found on the test class paths, in a stable order. */
+    /**
+     * The units jzap can run one at a time, in a stable order.
+     *
+     * <p>Usually these are individual tests. They are not always: an engine is free to build its
+     * test tree when it runs rather than when it is asked what it contains, and Kotest does
+     * exactly that — discovery returns one container per spec and the leaves appear only during
+     * execution. Collecting only {@code isTest()} descriptors therefore found nothing at all for
+     * a Kotest project, and jzap reported every mutant as uncovered with a plausible-looking 0%
+     * score and no error anywhere.
+     *
+     * <p>So the unit is whatever the engine exposes: a leaf where there is one, and otherwise a
+     * childless container. For Kotest that means selection works at spec granularity — coarser
+     * than a single test, and running one unit costs no more than running that spec normally
+     * would.
+     */
     List<String> discover() {
         LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
                 .selectors(DiscoverySelectors.selectClasspathRoots(Set.copyOf(classpathRoots)))
@@ -55,17 +69,27 @@ final class TestHarness {
         TestPlan plan = launcher.discover(request);
         List<String> tests = new ArrayList<>();
         for (TestIdentifier root : plan.getRoots()) {
-            collectTests(plan, root, tests);
+            collectUnits(plan, root, tests);
         }
         return tests;
     }
 
-    private void collectTests(TestPlan plan, TestIdentifier id, List<String> out) {
+    private void collectUnits(TestPlan plan, TestIdentifier id, List<String> out) {
         if (id.isTest()) {
             out.add(id.getUniqueId());
+            return;
         }
-        for (TestIdentifier child : plan.getChildren(id)) {
-            collectTests(plan, child, out);
+        Set<TestIdentifier> children = plan.getChildren(id);
+        if (children.isEmpty()) {
+            // An engine root with nothing under it simply has no tests; a container deeper than
+            // that is a spec whose contents are not known until it runs.
+            if (id.getParentId().isPresent()) {
+                out.add(id.getUniqueId());
+            }
+            return;
+        }
+        for (TestIdentifier child : children) {
+            collectUnits(plan, child, out);
         }
     }
 

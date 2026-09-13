@@ -691,7 +691,31 @@ and whose bytecode omits some instructions entirely.
 
 ## M16b · Kotest, and other JUnit Platform engines
 
-**Not started.**
+**Done, and the failure it predicted was real.**
+
+Kotest runs on the JUnit Platform, so discovery found its engine immediately and the first run
+completed without error: 7 mutants, all reported as uncovered, mutation score 0.0%. Nothing
+failed. That is precisely the silent degradation this milestone was written to catch.
+
+The cause is that **Kotest builds its test tree when a spec runs, not when the platform asks what
+the spec contains.** Discovery returns one container per spec and no leaf descriptors at all;
+the leaves appear only during execution. jzap collected only `isTest()` descriptors, found none,
+and concluded there were no tests.
+
+The fix is to stop assuming the shape of what an engine exposes. The unit jzap runs is now a leaf
+where the engine offers one and a childless container otherwise. For Kotest that means selection
+works at **spec granularity**: coarser than a single test, and running one unit costs no more than
+running that spec normally would.
+
+Covered by fixtures in all four spec styles -- `StringSpec`, `FunSpec`, `DescribeSpec`,
+`BehaviorSpec` -- with a deliberate gap the analysis has to find, and an assertion that unit ids
+are stable across runs, since the cache keys killing tests by unique id.
+
+Still outstanding from the original definition of done: the isolation-mode matrix
+(`InstancePerTest`, `InstancePerLeaf`), coroutine and thread-hopping fixtures for the probe and
+guard, and the measurement of project-level hook cost. Per-leaf selection would need a two-phase
+discovery -- run once to learn the tree, then select leaves by unique id -- which is worth doing
+only if spec granularity proves too coarse on a real project.
 
 **Goal.** Analyse projects whose tests are written in Kotest, with per-test selection, coverage
 and caching working exactly as they do for JUnit Jupiter.

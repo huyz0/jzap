@@ -48,6 +48,11 @@ SMAP table, and the emitted declaration correctly reports no coverage because Ko
 execute it. Coverage is keyed by (class, method, line) so a call site and the declaration cannot
 share a probe.
 
+**Kotest**, at spec granularity. Kotest builds its test tree when a spec runs rather than when the
+platform asks what it contains, so discovery returns containers and no leaves; jzap now takes its
+runnable unit from whatever the engine exposes rather than assuming leaves exist. Fixtures cover
+`StringSpec`, `FunSpec`, `DescribeSpec` and `BehaviorSpec`.
+
 **Four mutant-reduction techniques**, all off by default and all measured with what they cost:
 `--arid` (logging and report-only methods), `--one-per-line`, `--dedup` (trivial compiler
 equivalence), and `--mutators EXTREME` (Descartes-style whole-body replacement). Off by default
@@ -184,16 +189,13 @@ differentially tested against.
 | Mutant schemata (compile once, all mutants as guarded branches) | M8b |
 | Warm daemon with in-JVM mutant switching and static-state reset | M9 |
 | Block-granularity coverage | M10 |
-| Kotest support | M16b |
 | Maven plugin | M19 |
 | Multi-module single run with cross-module test selection | M20 |
 
 Also absent: Tier C corpora (parity runs against the hand-written and generated fixtures only),
-and the JUnit 4, TestNG and Kotest adapters behind the `jzap-testkit` SPI. Kotest runs on the
-JUnit Platform so discovery would find it, but that is not the same as supporting it: everything
-jzap does rests on running one test at a time by unique id, and a framework that cannot be driven
-that way degrades selection silently rather than failing. M16b covers it with fixtures and
-measurements rather than an assumption.
+and the JUnit 4 and TestNG adapters behind the `jzap-testkit` SPI. Kotest works at spec
+granularity; per-leaf selection, its isolation-mode matrix, and the coroutine fixtures remain
+outstanding from M16b.
 
 ## Known limitations of what does exist
 

@@ -32,6 +32,10 @@ final class Fixture {
         return new Fixture("jzap.kotlin.descriptor", ":fixtures:kotlin-sample");
     }
 
+    static Fixture kotest() {
+        return new Fixture("jzap.kotest.descriptor", ":fixtures:kotest-sample");
+    }
+
     private final String moduleId;
 
     private Fixture(String property, String moduleId) {
