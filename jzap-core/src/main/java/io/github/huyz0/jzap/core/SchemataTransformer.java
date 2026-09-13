@@ -15,6 +15,7 @@ import io.github.huyz0.jzap.model.MutantKey;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
@@ -131,7 +132,6 @@ final class SchemataTransformer {
         return new Result(writer.toByteArray(), indices, fallbacks);
     }
 
-    /** Keeps the context's line current, exactly as the mutating pass does. */
     /**
      * Rewrites each mutable operation into a dispatch call.
      *
@@ -143,6 +143,17 @@ final class SchemataTransformer {
 
         private final MutationContext ctx;
         private final Type returnType;
+
+        /**
+         * The instruction before the current one, when it was a constant push.
+         *
+         * <p>This has to be tracked exactly as {@code ReturnValueMutator} tracks it. Both use it
+         * to ask a return mutator whether its mutation would be a no-op, and a mutator that
+         * declines also declines to take an ordinal -- so a visitor here that forgot the previous
+         * instruction on a different set of opcodes would shift every later ordinal in the method
+         * and seed one mutant under another's key. Any callback one of them overrides, the other
+         * must too; SchemataVisitorParityTest holds them to it.
+         */
         private int lastOpcode = -1;
         private Object lastConstant;
 
@@ -311,6 +322,13 @@ final class SchemataTransformer {
                                     boolean isInterface) {
             forget();
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+        }
+
+        @Override
+        public void visitInvokeDynamicInsn(String name, String descriptor, Handle handle,
+                                           Object... arguments) {
+            forget();
+            super.visitInvokeDynamicInsn(name, descriptor, handle, arguments);
         }
     }
 }

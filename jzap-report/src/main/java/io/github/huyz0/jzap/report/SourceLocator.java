@@ -21,18 +21,14 @@ public final class SourceLocator {
         this.sourceRoots = List.copyOf(sourceRoots);
     }
 
-    /** Path relative to a source root, e.g. {@code ex/Calc.java}. */
+    /**
+     * Path relative to a source root, e.g. {@code ex/Calc.java}.
+     *
+     * <p>The rule itself lives on {@link Mutant}, because diff scoping in the engine matches
+     * against the same answer and a second copy here could drift from it.
+     */
     public static String relativePath(Mutant mutant) {
-        String className = mutant.key().className();
-        int lastDot = className.lastIndexOf('.');
-        String packagePath = lastDot < 0 ? "" : className.substring(0, lastDot).replace('.', '/') + "/";
-        String file = mutant.sourceFile();
-        if (file == null || file.isBlank()) {
-            String simple = lastDot < 0 ? className : className.substring(lastDot + 1);
-            int dollar = simple.indexOf('$');
-            file = (dollar < 0 ? simple : simple.substring(0, dollar)) + ".java";
-        }
-        return packagePath + file;
+        return mutant.sourcePath();
     }
 
     public Optional<Path> locate(Mutant mutant) {

@@ -153,24 +153,10 @@ public final class AnalysisEngine {
         if (changed == null) {
             return true;
         }
-        String sourcePath = sourcePathOf(m);
+        String sourcePath = m.sourcePath();
         return model.scope().isClassGranularity()
                 ? changed.containsPath(sourcePath)
                 : changed.containsLine(sourcePath, m.key().line());
-    }
-
-    /** Package directory plus the source file name recorded in the class file. */
-    private static String sourcePathOf(Mutant m) {
-        String className = m.key().className();
-        int lastDot = className.lastIndexOf('.');
-        String packagePath = lastDot < 0 ? "" : className.substring(0, lastDot).replace('.', '/') + "/";
-        String file = m.sourceFile();
-        if (file == null || file.isBlank()) {
-            String simple = lastDot < 0 ? className : className.substring(lastDot + 1);
-            int dollar = simple.indexOf('$');
-            file = (dollar < 0 ? simple : simple.substring(0, dollar)) + ".java";
-        }
-        return packagePath + file;
     }
 
     // ---------------------------------------------------------------- diagnostics

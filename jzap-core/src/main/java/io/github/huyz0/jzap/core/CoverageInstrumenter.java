@@ -108,7 +108,7 @@ final class CoverageInstrumenter {
             }
             int probeId = pendingProbe;
             pendingProbe = -1;
-            pushInt(mv, probeId);
+            Bytecode.pushInt(mv, probeId);
             mv.visitMethodInsn(Opcodes.INVOKESTATIC, RECORDER, "hit", "(I)V", false);
         }
 
@@ -196,18 +196,6 @@ final class CoverageInstrumenter {
         public void visitMaxs(int maxStack, int maxLocals) {
             pendingProbe = -1;  // a line with no instructions after it needs no probe
             super.visitMaxs(maxStack, maxLocals);
-        }
-    }
-
-    private static void pushInt(MethodVisitor mv, int value) {
-        if (value <= 5) {
-            mv.visitInsn(Opcodes.ICONST_0 + value);
-        } else if (value <= Byte.MAX_VALUE) {
-            mv.visitIntInsn(Opcodes.BIPUSH, value);
-        } else if (value <= Short.MAX_VALUE) {
-            mv.visitIntInsn(Opcodes.SIPUSH, value);
-        } else {
-            mv.visitLdcInsn(value);
         }
     }
 }
