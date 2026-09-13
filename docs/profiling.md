@@ -80,20 +80,55 @@ Measured separately, in [delivery-plan.md](delivery-plan.md) under M10. Tests ac
 mutant are already 1.00–1.11 across all fixtures, because kill-test-first ordering and early exit
 get there first.
 
-## Leads still open
+## Leads measured and closed on value
 
-### Parallelising the coverage phase
+### Parallelising the coverage phase: measured, and not worth it
 
-Coverage is now the largest remaining serial block: `810 ms` against an execution phase of
-`1690 ms`. It runs each test individually because per-test attribution requires it, and it runs
-them all in one JVM. Splitting the tests across several JVMs would parallelise it — worth perhaps
-`550 ms`, a fifth of a full run.
+I estimated this at ~550 ms and was wrong by 4x. Instrumenting the coverage phase gives:
 
-**Not done, because it changes what the baseline run means.** Tests currently share a JVM during
-the coverage phase, exactly as they do under `gradle test`. Splitting them across processes gives
-*more* isolation than the project's own build does, which can change which tests pass — and a
-baseline that disagrees with the project's own test run is worse than a slower one. Worth doing
-behind a flag, with the semantic change stated.
+| coverage phase, 810 ms total | |
+|---|---|
+| running the 200 tests, one at a time | 463 ms |
+| discovering the suite | 240 ms |
+| starting the analysis JVM | 57 ms |
+| instrumenting classes with probes | 16 ms |
+
+Only the 463 ms is parallelisable, and each extra JVM costs about 57 ms to start:
+
+| workers | test time | startup cost | total | saved |
+|---|---|---|---|---|
+| 1 | 463 ms | 57 ms | 520 ms | — |
+| 2 | 232 ms | 114 ms | 346 ms | 174 ms |
+| 3 | 154 ms | 171 ms | 325 ms | 195 ms |
+| 6 | 77 ms | 342 ms | 419 ms | 101 ms |
+
+So the best case is around **190 ms on a 2910 ms run: under 7%** — and it buys that by changing
+what the baseline measurement means. The same trap as the thread-scaling regression: once fixed
+costs dominate, dividing the variable part barely helps.
+
+**The risks, for the record, since the value would have to be much higher to be worth any of them:**
+
+- **Test isolation changes, and with it the verdicts.** Tests currently share one JVM in the
+  coverage phase, exactly as they do under `gradle test`. Split across processes, an order-dependent
+  test — one relying on state an earlier test left, a shared static cache, a lazily initialised
+  singleton — can pass or fail differently. That changes `failingBaselineTests`, which changes which
+  tests are excluded from selection, which changes mutant verdicts. A baseline that disagrees with
+  the project's own test run is worse than a slower one.
+- **Resource contention inside the tests.** Fixed ports, fixed temp paths, a shared database. This
+  is precisely why Gradle's `maxParallelForks` is not the default.
+- **Measured durations inflate under CPU contention**, and those durations feed the wall-clock
+  timeout backstop, so it gets looser. The deterministic loop guard is unaffected.
+- **It must stay sequential *within* each JVM.** `CoverageRecorder` is a global array drained
+  between tests and `LoopGuard` a global counter; two tests at once in one JVM would cross-attribute
+  coverage and corrupt the iteration baselines. So the design is "one test at a time per JVM, several
+  JVMs" — which is what makes the startup cost unavoidable.
+- **More exposure to flaky tests**, from different timing and GC in more processes.
+
+What would change this: a project where the tests are slow. At 2.3 ms per test this fixture is the
+worst possible case for the idea. A suite where tests take 100 ms each would put nearly all of the
+coverage phase in the parallelisable part, and the arithmetic would invert. The condition to check
+before revisiting is `coverageRunTests` being a large majority of `coverage` in the report's
+timings.
 
 ### Reducing the launcher's mandatory work
 
@@ -120,6 +155,10 @@ the run is now only 2.9 s, of which 0.8 s is a serial coverage phase.
 One number moved in a direction that looks like a regression and is not: a fully cached re-run is
 unchanged at 0.42 s, but that is now **14.3%** of a full run rather than 4.8%, because the full run
 got three times faster. The cache did not get worse; what it was being compared against got better.
+
+The coverage phase is now instrumented too — `coverageStartup`, `coverageDiscovery`,
+`coverageInstrument` and `coverageRunTests` — which is what turned a plausible 550 ms estimate into
+a measured 190 ms ceiling.
 
 An earlier run of this harness reported the one-changed-class scenario at 6.23 s, worse than a full
 run, which would have been a genuine bug in the cache. It was contention: reproduced by hand it was

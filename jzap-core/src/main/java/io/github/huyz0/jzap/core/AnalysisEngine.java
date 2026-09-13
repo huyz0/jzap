@@ -100,6 +100,10 @@ public final class AnalysisEngine {
     private final AtomicLong schemataNanos = new AtomicLong();
     private final AtomicLong installNanos = new AtomicLong();
     private final AtomicLong runTestsNanos = new AtomicLong();
+    private final AtomicLong coverageStartupNanos = new AtomicLong();
+    private final AtomicLong coverageDiscoveryNanos = new AtomicLong();
+    private final AtomicLong coverageInstrumentNanos = new AtomicLong();
+    private final AtomicLong coverageRunNanos = new AtomicLong();
     private final AtomicLong activateNanos = new AtomicLong();
 
     public AnalysisEngine(ProjectModel model, Listener listener) {
@@ -144,6 +148,10 @@ public final class AnalysisEngine {
         long coverageStart = System.nanoTime();
         Coverage coverage = gatherCoverage(inScope, classes, cache);
         timings.put("coverage", millisSince(coverageStart));
+        timings.put("coverageStartup", coverageStartupNanos.get() / 1_000_000L);
+        timings.put("coverageDiscovery", coverageDiscoveryNanos.get() / 1_000_000L);
+        timings.put("coverageInstrument", coverageInstrumentNanos.get() / 1_000_000L);
+        timings.put("coverageRunTests", coverageRunNanos.get() / 1_000_000L);
 
         long executionStart = System.nanoTime();
         List<Mutant> results = execute(inScope, classes, coverage, cache);
@@ -307,6 +315,7 @@ public final class AnalysisEngine {
                     cache::previousKillingTest);
         }
 
+        long instrumentStart = System.nanoTime();
         ProbeIndex index = new ProbeIndex();
         CoverageInstrumenter instrumenter = new CoverageInstrumenter(index);
         List<ClassBytes> instrumented = new ArrayList<>();
@@ -315,6 +324,7 @@ public final class AnalysisEngine {
             instrumented.add(new ClassBytes(className,
                     instrumenter.instrument(className, c.bytes()), "instrumented"));
         }
+        coverageInstrumentNanos.addAndGet(System.nanoTime() - instrumentStart);
 
         Map<String, Set<String>> testsByLocation = new LinkedHashMap<>();
         Map<String, Long> durations = new LinkedHashMap<>();
@@ -325,9 +335,13 @@ public final class AnalysisEngine {
 
         for (ModuleModel module : testBearingModules()) {
             listener.phase("coverage", module.id());
+            long startupStart = System.nanoTime();
             try (MinionProcess minion = MinionProcess.start(module, jars, true)) {
                 minion.initCoverage(index.size(), instrumented);
+                coverageStartupNanos.addAndGet(System.nanoTime() - startupStart);
+                long discoveryStart = System.nanoTime();
                 List<String> tests = minion.listTests(module.testClassPaths());
+                coverageDiscoveryNanos.addAndGet(System.nanoTime() - discoveryStart);
                 if (tests.isEmpty()) {
                     listener.warning("no tests were discovered in " + module.id() + ". Every mutant "
                             + "it covers will be reported as uncovered. Check that "
@@ -338,8 +352,10 @@ public final class AnalysisEngine {
                 int done = 0;
                 for (String testId : tests) {
                     MinionProcess.TestCoverage result;
+                    long runStart = System.nanoTime();
                     try {
                         result = minion.runTestForCoverage(testId, 120_000);
+                        coverageRunNanos.addAndGet(System.nanoTime() - runStart);
                     } catch (MinionProcess.HungException e) {
                         minion.destroy();
                         throw new WireException("coverage run aborted: " + e.getMessage(), e);

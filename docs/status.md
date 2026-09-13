@@ -190,7 +190,9 @@ reference engine, with verdicts asserted identical.
 Three quarters of that came from profiling rather than from new features, and the findings are in
 [profiling.md](profiling.md): every analysis JVM was discovering a test suite it never read,
 recycling the JVM every 100 mutants was throwing away JIT warmup, and each mutant took three
-protocol round trips where one would do.
+protocol round trips where one would do. The same document records what profiling ruled *out* —
+including parallelising the coverage phase, whose ceiling measured under 7% of a run and which would
+change what the baseline test run means.
 
 Thread scaling is now flat-positive — 1.00x, 1.14x, 1.11x, 1.14x at 1, 2, 4 and 20 threads. It was
 *negative* at twenty until the worker count was capped by estimated work: once a mutant costs 1.5ms
