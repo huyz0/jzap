@@ -145,7 +145,7 @@ val coverageReport = tasks.register<JacocoReport>("coverageReport") {
 val coverageFloorLine = 0.93
 val coverageFloorBranch = 0.85
 
-tasks.register<JacocoCoverageVerification>("coverageGate") {
+val coverageGate = tasks.register<JacocoCoverageVerification>("coverageGate") {
     group = "verification"
     description = "Fails if aggregate coverage falls below the recorded floor."
     dependsOn(coverageReport)
@@ -168,6 +168,18 @@ tasks.register<JacocoCoverageVerification>("coverageGate") {
             }
         }
     }
+}
+
+/**
+ * Wires the gate into the build, because a gate nothing runs is not a gate.
+ *
+ * <p>It was registered but unreachable: neither `check` nor `build` depended on it, so the floors
+ * above were only enforced for whoever thought to type `./gradlew coverageGate`. The test tasks it
+ * needs are already part of `build`, so this adds the report and the comparison, not another run
+ * of the suite.
+ */
+tasks.named("check") {
+    dependsOn(coverageGate)
 }
 
 /** Prints the aggregate ratios, because a report nobody reads is not a check. */

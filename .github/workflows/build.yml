@@ -1,0 +1,102 @@
+# What has to hold before a change is trusted, on every push and pull request.
+#
+# The jobs are separate because they answer different questions and fail for different reasons.
+# `build` is the suite, the module-boundary invariant and the coverage floor. `parity` is the
+# correctness oracle -- PIT analysing the same classes, compared mutant by mutant -- and it is the
+# only check here that can catch jzap being confidently wrong rather than merely broken.
+# `maven-plugin` is kept apart because it is the one job that needs Maven itself.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # A matrix because jzap forks JVMs, reads class files and installs a Java agent, all of which
+    # are version-sensitive. 17 is what the modules compile against; 21 is the current LTS.
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Analysis forks a JVM per module and runs a suite per mutant, so this is not a quick job.
+      - name: Build, test, module boundaries and coverage floor
+        run: ./gradlew build --stacktrace
+
+      # Kept whatever the outcome: a failure here is usually a verdict that moved, and the
+      # reports are what say which mutant.
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-java${{ matrix.java }}
+          path: |
+            **/build/reports/tests/
+            build/reports/coverage/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  parity:
+    # Any difference against PIT that is not justified in tools/parity/parity-baseline.yaml fails,
+    # and so does a baselined difference that stops occurring -- that means behaviour moved and
+    # nobody noticed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compare against PIT
+        run: ./gradlew :tools:parity:parity --stacktrace
+
+      - name: Keep the parity reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-reports
+          path: tools/parity/build/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  maven-plugin:
+    # Deliberately not part of `build`, so the ordinary build needs neither Maven nor a network.
+    # It still has to be checked somewhere, and this is that somewhere.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the Maven plugin and run it against a generated project
+        run: ./gradlew mavenSmokeTest --stacktrace
