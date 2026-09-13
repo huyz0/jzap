@@ -1,5 +1,6 @@
 package io.github.huyz0.jzap.core;
 
+import io.github.huyz0.jzap.agent.MutantSwitch;
 import io.github.huyz0.jzap.model.AnalysisResult;
 import io.github.huyz0.jzap.model.CacheConfig;
 import io.github.huyz0.jzap.model.ChangedLines;
@@ -48,7 +49,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class AnalysisEngine {
 
-    public static final String ENGINE_ID = "naive";
+    /** The reference implementation's id, kept for comparison against every optimisation. */
+    public static final String NAIVE_ENGINE = "naive";
 
     /** Filter id for keeping at most one mutant per source line. */
     public static final String ONE_PER_LINE = "ONE_PER_LINE";
@@ -120,7 +122,7 @@ public final class AnalysisEngine {
             listener.phase("skipped", "no mutants in scope");
             cache.write();
             return new AnalysisResult(List.of(), timings, 0, describeScope(changed),
-                    ENGINE_ID, List.of(), 0);
+                    model.engine(), List.of(), 0);
         }
 
         long coverageStart = System.nanoTime();
@@ -137,7 +139,7 @@ public final class AnalysisEngine {
                 timings,
                 coverage.testIds().size(),
                 describeScope(changed),
-                ENGINE_ID,
+                model.engine(),
                 coverage.failingTests(),
                 reusedFromCache.get());
     }
@@ -442,6 +444,12 @@ public final class AnalysisEngine {
         private final Map<String, MinionProcess> minions = new LinkedHashMap<>();
         private int sinceRestart;
 
+        /** The schemata class currently installed in each minion, and its mutant indices. */
+        private String installedClass;
+        private byte[] installedSchemata;
+        private Map<MutantKey, Integer> installedIndices = Map.of();
+        private final Set<String> minionsHoldingSchemata = new LinkedHashSet<>();
+
         Worker(Queue<List<Mutant>> queue, Map<String, ClassUnderTest> classes, Coverage coverage,
                MutantCache cache, Collection<Mutant> analysed, AtomicInteger done, int total) {
             this.queue = queue;
@@ -458,6 +466,7 @@ public final class AnalysisEngine {
             try {
                 List<Mutant> batch;
                 while ((batch = queue.poll()) != null) {
+                    prepareSchemata(batch);
                     for (Mutant mutant : batch) {
                         analysed.add(analyseOne(mutant));
                         listener.progress(done.incrementAndGet(), total);
@@ -466,6 +475,42 @@ public final class AnalysisEngine {
             } finally {
                 minions.values().forEach(MinionProcess::close);
                 minions.clear();
+            }
+        }
+
+        /**
+         * Builds the schemata class for a batch, which is always one class's worth of mutants.
+         *
+         * <p>Built once per class rather than once per mutant, which is the entire saving: the
+         * class is installed once and each mutant then costs a field write.
+         */
+        private void prepareSchemata(List<Mutant> batch) {
+            installedClass = null;
+            installedSchemata = null;
+            installedIndices = Map.of();
+            minionsHoldingSchemata.clear();
+            if (!model.usesSchemata() || batch.isEmpty()) {
+                return;
+            }
+            String className = batch.get(0).key().className();
+            ClassUnderTest target = classes.get(className);
+            if (target == null) {
+                return;
+            }
+            try {
+                SchemataTransformer.Result result =
+                        SchemataTransformer.transform(target.bytes(), batch);
+                if (result.indices().isEmpty()) {
+                    return;
+                }
+                installedClass = className;
+                installedSchemata = result.schemata();
+                installedIndices = result.indices();
+            } catch (RuntimeException e) {
+                // A class that cannot be transformed is analysed the slow way rather than not at
+                // all; the verdicts are the same either way.
+                listener.warning("schemata could not be built for " + className + ", falling back "
+                        + "to per-mutant redefinition: " + e.getMessage());
             }
         }
 
@@ -481,14 +526,20 @@ public final class AnalysisEngine {
                 recycleAll();
             }
 
-            byte[] mutated;
-            try {
-                mutated = mutation.apply(classes.get(mutant.key().className()).bytes(), mutant.key());
-            } catch (RuntimeException e) {
-                listener.warning("mutant " + mutant.key().asString() + " could not be generated: "
-                        + e.getMessage());
-                return mutant.withOutcome(MutantStatus.RUN_ERROR, null, selected.size(), 0,
-                        millisSince(mutantStart));
+            Integer schemataIndex = mutant.key().className().equals(installedClass)
+                    ? installedIndices.get(mutant.key())
+                    : null;
+
+            byte[] mutated = null;
+            if (schemataIndex == null) {
+                try {
+                    mutated = mutation.apply(classes.get(mutant.key().className()).bytes(), mutant.key());
+                } catch (RuntimeException e) {
+                    listener.warning("mutant " + mutant.key().asString() + " could not be generated: "
+                            + e.getMessage());
+                    return mutant.withOutcome(MutantStatus.RUN_ERROR, null, selected.size(), 0,
+                            millisSince(mutantStart));
+                }
             }
 
             MutantStatus status = MutantStatus.SURVIVED;
@@ -505,7 +556,13 @@ public final class AnalysisEngine {
                 MinionProcess minion;
                 try {
                     minion = minionFor(module);
-                    minion.setOverride(mutant.key().className(), mutated);
+                    if (schemataIndex != null) {
+                        installSchemataIfNeeded(minion, module.id());
+                        minion.activateMutant(schemataIndex);
+                    } else {
+                        minion.activateMutant(MutantSwitch.NONE);
+                        minion.setOverride(mutant.key().className(), mutated);
+                    }
                 } catch (WireException | IllegalStateException e) {
                     listener.warning("mutant " + mutant.key().asString() + " could not be analysed: "
                             + e.getMessage());
@@ -526,7 +583,13 @@ public final class AnalysisEngine {
                         case Wire.OUTCOME_RUNAWAY -> MutantStatus.TIMED_OUT;
                         default -> MutantStatus.RUN_ERROR;
                     };
-                    minion.clearOverrides();
+                    if (schemataIndex != null) {
+                        // The schemata class stays installed; only the switch is reset.
+                        minion.activateMutant(MutantSwitch.NONE);
+                    } else {
+                        minion.clearOverrides();
+                        minionsHoldingSchemata.remove(module.id());
+                    }
                     if (fromGroup != MutantStatus.SURVIVED) {
                         status = fromGroup;
                         killingTest = fromGroup == MutantStatus.KILLED ? outcome.failingTest() : null;
@@ -563,14 +626,22 @@ public final class AnalysisEngine {
             return started;
         }
 
+        private void installSchemataIfNeeded(MinionProcess minion, String moduleId) {
+            if (minionsHoldingSchemata.add(moduleId)) {
+                minion.setOverride(installedClass, installedSchemata);
+            }
+        }
+
         private void recycleAll() {
             minions.values().forEach(MinionProcess::close);
             minions.clear();
+            minionsHoldingSchemata.clear();
             sinceRestart = 0;
         }
 
         /** Kills a JVM outright. The only reliable way to stop a mutant that hangs. */
         private void discard(String moduleId) {
+            minionsHoldingSchemata.remove(moduleId);
             MinionProcess minion = minions.remove(moduleId);
             if (minion != null) {
                 minion.destroy();
@@ -593,7 +664,7 @@ public final class AnalysisEngine {
                 ? Path.of(config.dir()).resolve("jzap-cache.txt")
                 : null;
         return MutantCache.open(file, new MutantCache.Header(
-                ENGINE_ID,
+                model.engine(),
                 EngineVersion.get(),
                 String.join(",", Mutators.resolve(model.scope().mutators()).stream()
                         .map(Mutator::id).sorted().toList()),

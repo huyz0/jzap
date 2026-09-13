@@ -20,6 +20,9 @@ import java.util.List;
  * @param timeoutConstMillis constant added to the timeout, to absorb scheduling noise
  * @param maxMutantsPerMinion mutants analysed in one forked JVM before it is recycled, which
  *                      bounds state drift between mutants
+ * @param engine        {@code schemata} compiles every mutant of a class in at once and selects
+ *                      one with a field write; {@code naive} redefines the class per mutant and is
+ *                      kept as the reference implementation every optimisation is compared against
  */
 public record ProjectModel(
         int schemaVersion,
@@ -30,7 +33,8 @@ public record ProjectModel(
         int threads,
         double timeoutFactor,
         long timeoutConstMillis,
-        int maxMutantsPerMinion) {
+        int maxMutantsPerMinion,
+        String engine) {
 
     public static final int CURRENT_SCHEMA_VERSION = 1;
 
@@ -54,6 +58,15 @@ public record ProjectModel(
         timeoutFactor = timeoutFactor <= 0 ? 1.5 : timeoutFactor;
         timeoutConstMillis = timeoutConstMillis <= 0 ? 4000L : timeoutConstMillis;
         maxMutantsPerMinion = maxMutantsPerMinion <= 0 ? 100 : maxMutantsPerMinion;
+        engine = engine == null || engine.isBlank() ? "schemata" : engine;
+        if (!engine.equals("schemata") && !engine.equals("naive")) {
+            throw new IllegalArgumentException(
+                    "engine must be 'schemata' or 'naive', got: " + engine);
+        }
+    }
+
+    public boolean usesSchemata() {
+        return "schemata".equals(engine);
     }
 
     public ModuleModel module(String id) {
@@ -65,16 +78,21 @@ public record ProjectModel(
 
     public ProjectModel withScope(Scope newScope) {
         return new ProjectModel(schemaVersion, modules, newScope, cache, reporters, threads,
-                timeoutFactor, timeoutConstMillis, maxMutantsPerMinion);
+                timeoutFactor, timeoutConstMillis, maxMutantsPerMinion, engine);
     }
 
     public ProjectModel withCache(CacheConfig newCache) {
         return new ProjectModel(schemaVersion, modules, scope, newCache, reporters, threads,
-                timeoutFactor, timeoutConstMillis, maxMutantsPerMinion);
+                timeoutFactor, timeoutConstMillis, maxMutantsPerMinion, engine);
     }
 
     public ProjectModel withThreads(int newThreads) {
         return new ProjectModel(schemaVersion, modules, scope, cache, reporters, newThreads,
-                timeoutFactor, timeoutConstMillis, maxMutantsPerMinion);
+                timeoutFactor, timeoutConstMillis, maxMutantsPerMinion, engine);
+    }
+
+    public ProjectModel withEngine(String newEngine) {
+        return new ProjectModel(schemaVersion, modules, scope, cache, reporters, threads,
+                timeoutFactor, timeoutConstMillis, maxMutantsPerMinion, newEngine);
     }
 }

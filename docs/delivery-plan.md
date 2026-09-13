@@ -282,6 +282,10 @@ single-threaded, so a laptop with eight cores is doing an eighth of the work it 
 
 ### M8a · Parallel execution
 
+**Done.** Measured on 40 generated classes: 10.07s at one thread, 6.09s at two, 4.98s at four,
+4.86s at twenty. Sublinear because the coverage phase is serial and the fixture has only 40
+classes, so past a handful of workers each pays JVM startup for very little work.
+
 **Goal.** Analyse mutants on every available core.
 
 **Definition of done.**
@@ -310,6 +314,36 @@ single-threaded, so a laptop with eight cores is doing an eighth of the work it 
 - Differential runs at 1, 2 and 8 threads; benchmark.
 
 ### M8b · Schemata engine
+
+**Done, and the size budget turned out not to be a constraint.**
+
+Every mutant of a class is compiled in at once and selected by a field write, so a mutant costs a
+volatile store rather than a class redefinition -- which makes the JVM discard the class,
+re-verify it, and throw away its JIT-compiled code, once per mutant. Default engine;
+`--engine=naive` still selects the reference implementation.
+
+**Branch-free, which is the design decision that matters.** The obvious encoding guards each
+mutant with an `if` inside the mutated method. That adds jumps, which adds stack map frames, which
+means `COMPUTE_FRAMES`, which means loading classes to compute common supertypes -- and an analysis
+that fails whenever the transformer cannot fully resolve the classpath. Instead each mutable
+operation becomes a call to a static dispatch method that takes the operands and the mutant ids
+and decides what to return. Control flow is untouched, existing frames stay valid, `COMPUTE_MAXS`
+is enough, and no class is ever loaded to transform another.
+
+**Spike A, answered by measurement rather than by design:** the budget is not a constraint with
+this encoding. Each site grows by roughly a constant push and an invocation, so the 64KB method
+limit needs thousands of mutation points in a single method before it matters. The class-splitting
+strategy the plan called for was never needed.
+
+`VOID_METHOD_CALLS` removes a call, which cannot be expressed without a branch, so those mutants
+are routed to per-mutant redefinition. A test asserts every mutant is either compiled in or routed,
+because silently losing one would look like a smaller inventory rather than a bug.
+
+**Measured: 2.48x on the execution phase** (22.35s to 9.03s on the bench fixture), 1.97x on the
+whole run. **The definition of done asked for 3x and this is 2.48x.** The remaining per-mutant cost
+is not redefinition any more; it is starting a JUnit launcher execution per test. That is what M9's
+warm daemon and a batched execution path would address, and it is why the target was missed rather
+than met by adjusting the target.
 
 **Goal.** Compile once, with all mutants present as guarded branches and one active at a time.
 

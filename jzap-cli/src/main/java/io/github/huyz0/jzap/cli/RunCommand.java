@@ -58,6 +58,12 @@ final class RunCommand implements Callable<Integer> {
                     + "should not start reusing without being asked.")
     Path cacheDir;
 
+    @Option(names = "--engine", paramLabel = "schemata|naive",
+            description = "schemata compiles every mutant of a class in at once and selects one "
+                    + "with a field write; naive redefines the class per mutant and is kept as the "
+                    + "reference implementation. Default: schemata.")
+    String engine;
+
     @Option(names = {"-t", "--threads"}, paramLabel = "N",
             description = "Analysis threads. Default: whatever the model asks for, which "
                     + "defaults to one per available processor.")
@@ -85,6 +91,14 @@ final class RunCommand implements Callable<Integer> {
         }
         if (cacheDir != null) {
             model = model.withCache(CacheConfig.at(cacheDir.toString()));
+        }
+        if (engine != null) {
+            try {
+                model = model.withEngine(engine);
+            } catch (IllegalArgumentException e) {
+                System.err.println("jzap: " + e.getMessage());
+                return EXIT_USAGE;
+            }
         }
 
         AnalysisResult result;

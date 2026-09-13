@@ -59,6 +59,11 @@ public final class MathMutator implements Mutator {
         pair(Opcodes.DREM, Opcodes.DMUL, "replaced double modulus with multiplication");
     }
 
+    /** Whether this mutator seeds a mutant at this opcode, so other passes can agree with it. */
+    public static boolean handles(int opcode) {
+        return REPLACEMENTS.containsKey(opcode);
+    }
+
     @Override
     public String id() {
         return ID;

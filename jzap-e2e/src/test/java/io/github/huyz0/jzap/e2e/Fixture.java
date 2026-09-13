@@ -45,7 +45,7 @@ final class Fixture {
         Fixture app = new Fixture("jzap.multi.app.descriptor", ":fixtures:multi-app");
         return new ProjectModel(1,
                 List.of(core.module(), app.module()),
-                Scope.all(), null, List.of("json"), 1, 1.5, 4000, 100);
+                Scope.all(), null, List.of("json"), 1, 1.5, 4000, 100, null);
     }
 
     ModuleModel module() {
@@ -117,6 +117,6 @@ final class Fixture {
     }
 
     ProjectModel model(Scope scope) {
-        return new ProjectModel(1, List.of(module()), scope, null, List.of("json"), 1, 1.5, 4000, 100);
+        return new ProjectModel(1, List.of(module()), scope, null, List.of("json"), 1, 1.5, 4000, 100, null);
     }
 }

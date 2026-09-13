@@ -27,7 +27,7 @@ public final class ModelIo {
 
     private static final Set<String> KNOWN_PROJECT_FIELDS = Set.of(
             "schemaVersion", "modules", "scope", "cache", "reporters", "threads",
-            "timeoutFactor", "timeoutConstMillis", "maxMutantsPerMinion");
+            "timeoutFactor", "timeoutConstMillis", "maxMutantsPerMinion", "engine");
 
     private static final Set<String> KNOWN_MODULE_FIELDS = Set.of(
             "id", "mutableCodePaths", "sourceRoots", "testClassPaths", "testClasspath",

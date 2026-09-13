@@ -25,7 +25,7 @@ class HangDetectionTest {
     private static ProjectModel hangModel(long timeoutConstMillis) {
         ProjectModel base = Fixture.hang().model(Scope.all());
         return new ProjectModel(1, base.modules(), base.scope(), base.cache(), base.reporters(),
-                1, base.timeoutFactor(), timeoutConstMillis, base.maxMutantsPerMinion());
+                1, base.timeoutFactor(), timeoutConstMillis, base.maxMutantsPerMinion(), base.engine());
     }
 
     private static AnalysisResult analyse(long timeoutConstMillis) {

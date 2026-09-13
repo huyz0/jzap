@@ -3,6 +3,7 @@ package io.github.huyz0.jzap.minion;
 import io.github.huyz0.jzap.agent.ClassOverrides;
 import io.github.huyz0.jzap.agent.CoverageRecorder;
 import io.github.huyz0.jzap.agent.LoopGuard;
+import io.github.huyz0.jzap.agent.MutantSwitch;
 import io.github.huyz0.jzap.agent.JzapAgent;
 import io.github.huyz0.jzap.wire.Channel;
 import io.github.huyz0.jzap.wire.Wire;
@@ -61,6 +62,7 @@ public final class Minion {
                 case Wire.CMD_RUN_TEST_COVERAGE -> runTestForCoverage(channel);
                 case Wire.CMD_SET_OVERRIDE -> setOverride(channel);
                 case Wire.CMD_CLEAR_OVERRIDES -> clearOverrides(channel);
+                case Wire.CMD_ACTIVATE_MUTANT -> activateMutant(channel);
                 case Wire.CMD_RUN_TESTS -> runTests(channel);
                 case Wire.CMD_EXIT -> {
                     return;
@@ -145,6 +147,11 @@ public final class Minion {
 
     private void clearOverrides(Channel channel) throws IOException {
         ClassOverrides.removeAll();
+        respondOk(channel);
+    }
+
+    private void activateMutant(Channel channel) throws IOException {
+        MutantSwitch.activate(channel.readInt());
         respondOk(channel);
     }
 

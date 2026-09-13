@@ -15,6 +15,11 @@ public final class InvertNegsMutator implements Mutator {
     private static final Set<Integer> NEGATIONS =
             Set.of(Opcodes.INEG, Opcodes.LNEG, Opcodes.FNEG, Opcodes.DNEG);
 
+    /** Whether this mutator seeds a mutant at this opcode, so other passes can agree with it. */
+    public static boolean handles(int opcode) {
+        return NEGATIONS.contains(opcode);
+    }
+
     @Override
     public String id() {
         return ID;

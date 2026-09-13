@@ -14,9 +14,17 @@ public final class TrueReturnsMutator extends ReturnValueMutator {
         return ID;
     }
 
+    public static boolean appliesTo(Type returnType) {
+        return returnType.getSort() == Type.BOOLEAN;
+    }
+
+    public static boolean isNoOp(int lastOpcode) {
+        return lastOpcode == Opcodes.ICONST_1;
+    }
+
     @Override
     protected boolean applies(Type returnType) {
-        return returnType.getSort() == Type.BOOLEAN;
+        return appliesTo(returnType);
     }
 
     @Override
@@ -26,7 +34,7 @@ public final class TrueReturnsMutator extends ReturnValueMutator {
 
     @Override
     protected boolean wouldBeNoOp(int opcode, Object constant) {
-        return opcode == Opcodes.ICONST_1;   // the method already returns true here
+        return isNoOp(opcode);   // the method already returns true here
     }
 
     @Override

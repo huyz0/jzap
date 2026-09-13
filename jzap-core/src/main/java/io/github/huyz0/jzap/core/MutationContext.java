@@ -19,12 +19,26 @@ import java.util.Map;
  */
 public final class MutationContext {
 
-    public enum Mode { COLLECT, APPLY }
+    public enum Mode {
+        /** Record every mutation point, change nothing. */
+        COLLECT,
+        /** Apply exactly one mutation. */
+        APPLY,
+        /**
+         * Compile every mutant in at once, selected at run time.
+         *
+         * <p>Shares this class's ordinal bookkeeping rather than reimplementing it, because a
+         * schemata index that disagreed with a discovered key by even one ordinal would run the
+         * wrong mutant and report the result against the right one.
+         */
+        SCHEMATA
+    }
 
     private final Mode mode;
     private final String moduleId;
     private final String className;
     private final MutantKey target;
+    private Map<MutantKey, Integer> schemataIndices = Map.of();
 
     private String sourceFile;
     private SourceMap sourceMap = SourceMap.EMPTY;
@@ -49,6 +63,17 @@ public final class MutationContext {
 
     public static MutationContext applying(String className, MutantKey target) {
         return new MutationContext(Mode.APPLY, null, className, target);
+    }
+
+    /** @param indices schemata index per mutant; a key that is absent is not seeded */
+    public static MutationContext schemata(String className, Map<MutantKey, Integer> indices) {
+        MutationContext ctx = new MutationContext(Mode.SCHEMATA, null, className, null);
+        ctx.schemataIndices = Map.copyOf(indices);
+        return ctx;
+    }
+
+    public boolean isSchemata() {
+        return mode == Mode.SCHEMATA;
     }
 
     public void sourceFile(String sourceFile) {
@@ -102,10 +127,31 @@ public final class MutationContext {
      * @param description human-readable, source-faithful description of the change
      * @return true only in APPLY mode, and only for the one targeted mutant
      */
-    public boolean shouldMutate(String mutatorId, String description) {
+    /**
+     * Assigns this mutation point its key, in the one place that does so.
+     *
+     * <p>Every mode goes through here, so a key means the same thing whether it was discovered,
+     * applied on its own, or compiled into a schemata class.
+     */
+    public MutantKey register(String mutatorId) {
         String bucket = line + "|" + mutatorId;
         int ordinal = ordinals.merge(bucket, 0, (a, b) -> a + 1);
-        MutantKey key = new MutantKey(className, methodName, descriptor, line, mutatorId, ordinal);
+        return new MutantKey(className, methodName, descriptor, line, mutatorId, ordinal);
+    }
+
+    /**
+     * The schemata index for a key, or {@code -1} when no mutant was seeded there.
+     *
+     * <p>{@code -1} matches {@link io.github.huyz0.jzap.agent.MutantSwitch#NONE}, so a dispatch call compiled
+     * with it can never match the active mutant.
+     */
+    public int schemataIndex(MutantKey key) {
+        return schemataIndices.getOrDefault(key, -1);
+    }
+
+    public boolean shouldMutate(String mutatorId, String description) {
+        MutantKey key = register(mutatorId);
+        int ordinal = key.ordinal();
         if (mode == Mode.COLLECT) {
             // Saying so matters: the same source line appears once per call site, and a reader
             // seeing it twice should know why rather than suspect the report.

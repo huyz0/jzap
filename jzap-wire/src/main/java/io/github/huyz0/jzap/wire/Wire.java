@@ -26,6 +26,13 @@ public final class Wire {
     public static final byte CMD_RUN_TESTS = 6;
     /** Shut the minion down cleanly. */
     public static final byte CMD_EXIT = 7;
+    /**
+     * Select which mutant of an installed schemata class is active.
+     *
+     * <p>The point of schemata: one field write where the alternative is redefining a class, which
+     * makes the JVM re-verify it and discard its compiled code.
+     */
+    public static final byte CMD_ACTIVATE_MUTANT = 8;
 
     public static final byte RESP_OK = 20;
     public static final byte RESP_ERROR = 21;

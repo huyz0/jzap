@@ -86,6 +86,14 @@ sorted sections, so a diff of it shows what changed.
 Opt-in rather than on by default: a cache whose whole question is whether reuse is sound should
 not start reusing without being asked.
 
+**Mutant schemata**, the default engine. Every mutant of a class is compiled in at once and
+selected by a field write, rather than redefining the class per mutant. The encoding is branch-free
+— each mutable operation becomes a call to a static dispatch method — so no stack map frames are
+added and no class has to be loaded to transform another. Measured at 2.48x on the execution phase
+against the reference engine, with identical verdicts asserted on every fixture.
+`--engine=naive` selects the reference implementation, which is kept permanently for exactly that
+comparison.
+
 **Deterministic hang detection.** A mutant that never returns is found by counting loop
 iterations, not by watching the clock: the limit is ten times what the unmutated code needed on
 the same tests. A run with a one-millisecond wall-clock budget and one with thirty seconds produce
@@ -151,20 +159,21 @@ bench fixture (40 classes, 200 tests, ~1080 mutants) on a developer machine:
 
 | Scenario | jzap | PIT |
 |---|---|---|
-| Full run, one thread | 19.0s | 28.9s |
-| Full run, 20 threads | 6.6s | not comparable (PIT pinned to one thread) |
+| Full run, one thread | 9.7s | 34.4s |
+| Full run, 20 threads | 4.9s | not comparable (PIT pinned to one thread) |
 | Diff run, one changed line, 6 mutants in scope | 1.6s | not comparable |
-| Re-run with no changes, cache warm | 0.42s | no equivalent |
-| Re-run after one class recompiled | 1.95s | no equivalent |
+| Re-run with no changes, cache warm | 0.44s | no equivalent |
+| Re-run after one class recompiled | 1.9s | no equivalent |
 
-At one thread that is 1.5x faster than PIT while analysing 40 *more* mutants (3.8%), so the
-ratio is conservative rather than flattered. Across repeated runs of the harness the single-thread
-ratio landed between 1.5x and 1.6x, which is the honest width of this measurement on a machine
-that is also doing other things.
+At one thread that is 3.5x faster than PIT while analysing 40 *more* mutants (3.8%), so the ratio
+is conservative rather than flattered. 7.1x at twenty threads, against a PIT pinned to one.
 
-Thread scaling is sublinear -- 1.00x, 1.58x, 2.20x, 2.85x at 1, 2, 4 and 20 threads -- because
-the coverage phase is serial and the fixture has only 40 classes, so beyond a handful of workers
-each one pays JVM startup for very little work.
+Thread scaling is sublinear — 1.00x, 1.65x, 2.02x, 2.07x at 1, 2, 4 and 20 threads — because the
+coverage phase is serial and the fixture has only 40 classes, so beyond a handful of workers each
+one pays JVM startup for very little work.
+
+Run-to-run variance on a working machine is wide: compare medians within one report, not across
+reports.
 
 Re-running after one recompiled class costs 4.6x a no-change run because any change to any class
 invalidates the whole coverage map. That is deliberate: a changed production class can alter
@@ -196,7 +205,6 @@ differentially tested against.
 
 | Missing | Milestone |
 |---|---|
-| Mutant schemata (compile once, all mutants as guarded branches) | M8b |
 | Warm daemon with in-JVM mutant switching and static-state reset | M9 |
 | Block-granularity coverage | M10 |
 

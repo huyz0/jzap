@@ -45,13 +45,21 @@ public final class EmptyReturnsMutator extends ReturnValueMutator {
         return ID;
     }
 
-    @Override
-    protected boolean applies(Type returnType) {
+    public static boolean appliesTo(Type returnType) {
         if (returnType.getSort() != Type.OBJECT) {
             return false;
         }
         return returnType.getInternalName().equals("java/lang/String")
                 || EMPTIES.containsKey(returnType.getInternalName());
+    }
+
+    public static boolean isNoOp(int lastOpcode, Object constant) {
+        return lastOpcode == Opcodes.LDC && "".equals(constant);
+    }
+
+    @Override
+    protected boolean applies(Type returnType) {
+        return appliesTo(returnType);
     }
 
     @Override
@@ -65,11 +73,16 @@ public final class EmptyReturnsMutator extends ReturnValueMutator {
     @Override
     protected boolean wouldBeNoOp(int opcode, Object constant) {
         // The only empty value javac can have just pushed as a constant is the empty string.
-        return opcode == Opcodes.LDC && "".equals(constant);
+        return isNoOp(opcode, constant);
     }
 
     @Override
     protected void pushReplacement(MethodVisitor mv, Type returnType) {
+        pushEmpty(mv, returnType);
+    }
+
+    /** Pushes the empty value for this reference type. */
+    public static void pushEmpty(MethodVisitor mv, Type returnType) {
         String internal = returnType.getInternalName();
         if (internal.equals("java/lang/String")) {
             mv.visitLdcInsn("");

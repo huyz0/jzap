@@ -172,6 +172,19 @@ public final class MinionProcess implements AutoCloseable {
         expectOk("installing a mutant in " + className);
     }
 
+    /**
+     * Selects which mutant of an installed schemata class is active.
+     *
+     * <p>{@link io.github.huyz0.jzap.agent.MutantSwitch#NONE} restores the original behaviour.
+     */
+    public void activateMutant(int index) {
+        channel.readTimeout(30_000);
+        channel.writeByte(Wire.CMD_ACTIVATE_MUTANT);
+        channel.writeInt(index);
+        channel.flush();
+        expectOk("activating mutant " + index);
+    }
+
     public void clearOverrides() {
         channel.readTimeout(30_000);
         channel.writeByte(Wire.CMD_CLEAR_OVERRIDES);

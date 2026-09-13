@@ -160,6 +160,28 @@ def main():
         pit_summary = summarise_pit(pit_reports)
         print(f"  PIT  full run {run + 1}/{args.runs}: {elapsed:.2f}s", file=sys.stderr)
 
+    # --- S1a: engine comparison ----------------------------------------------------------
+    # Schemata against the reference engine on identical work. The verdicts are asserted equal by
+    # EngineDifferentialTest; what is measured here is only what the encoding saves.
+    engines = {}
+    for engine in ("naive", "schemata"):
+        model = os.path.join(args.out, f"model-{engine}.json")
+        reports = os.path.join(args.out, f"jzap-{engine}")
+        write_model(model, props, {"kind": "ALL", "granularity": "line"}, reports)
+        times = []
+        summary = None
+        for run in range(args.runs):
+            shutil.rmtree(reports, ignore_errors=True)
+            elapsed, result = timed([args.jzap, "run", "-m", model, "-o", reports,
+                                     "-q", "--engine", engine])
+            if result.returncode not in (0, 1):
+                print(result.stdout[-4000:])
+                sys.exit(f"jzap failed with engine {engine}")
+            times.append(elapsed)
+            summary = summarise_jzap(reports)
+        engines[engine] = (times, summary)
+        print(f"  engine {engine}: {statistics.median(times):.2f}s", file=sys.stderr)
+
     # --- S1b: thread scaling ------------------------------------------------------------
     # Reported as a curve rather than a single "parallel is faster" claim, because the shape is
     # the interesting part: where it stops scaling says whether the bottleneck is still the
@@ -291,7 +313,7 @@ def main():
     lines.append("Compilation is excluded; both tools analyse the same prebuilt classes.")
     lines.append("")
     lines.append("S1  full run")
-    lines.append("  " + report("jzap (engine: naive)", jzap_times))
+    lines.append("  " + report("jzap (default engine)", jzap_times))
     lines.append("  " + report("PIT", pit_times))
     ratio = statistics.median(pit_times) / statistics.median(jzap_times)
     faster = "faster" if ratio > 1 else "slower"
@@ -310,6 +332,30 @@ def main():
                      + ".")
     else:
         lines.append("  Work parity: both tools analysed the same number of mutants.")
+    lines.append("")
+    lines.append("S1a engine")
+    for engine in ("naive", "schemata"):
+        times, summary = engines[engine]
+        lines.append("  " + report(f"jzap, {engine}", times)
+                     + f"   {statistics.median(engines['naive'][0]) / statistics.median(times):5.2f}x"
+                     + " vs naive")
+    # The execution phase is the part schemata changes; the whole-run figure is diluted by the
+    # serial coverage phase, so both are reported rather than only the flattering one.
+    naive_execution = engines["naive"][1][2].get("execution", 0)
+    schemata_execution = engines["schemata"][1][2].get("execution", 0)
+    if naive_execution and schemata_execution:
+        lines.append(f"  execution phase only: {naive_execution / 1000:.2f}s -> "
+                     f"{schemata_execution / 1000:.2f}s, "
+                     f"{naive_execution / schemata_execution:.2f}x")
+
+    naive_counts = engines["naive"][1][1]
+    schemata_counts = engines["schemata"][1][1]
+    lines.append(f"  verdicts identical: {dict(sorted(naive_counts.items())) == dict(sorted(schemata_counts.items()))}"
+                 f"  (naive {dict(sorted(naive_counts.items()))})")
+    lines.append("  Schemata compiles every mutant of a class in at once, so selecting one is a")
+    lines.append("  field write rather than a class redefinition -- which makes the JVM re-verify")
+    lines.append("  the class and discard its compiled code, once per mutant.")
+
     lines.append("")
     lines.append(f"S1b thread scaling ({cores} cores available)")
     single = statistics.median(scaling[1])
@@ -364,10 +410,14 @@ def main():
     lines.append("Caveats, stated because a timing without them is not usable:")
     lines.append("  - Run on a developer machine, not an isolated bench host. Treat the ratio as")
     lines.append("    indicative and the absolute numbers as machine-specific.")
-    lines.append("  - jzap's engine here is the deliberately slow reference implementation: one")
-    lines.append("    mutant at a time, one thread, no schemata, no warm daemon, no cache. Those")
-    lines.append("    are M8-M11 in docs/delivery-plan.md.")
-    lines.append("  - PIT runs multi-process by default; both were pinned to one thread.")
+    lines.append("  - S1, S3, S5 and S6 use jzap's defaults: the schemata engine, one thread,")
+    lines.append("    and no cache except where the scenario says otherwise. S1a compares the")
+    lines.append("    engines directly.")
+    lines.append("  - Still missing: the warm daemon of M9, and block-granularity coverage.")
+    lines.append("  - PIT runs multi-process by default; both were pinned to one thread except")
+    lines.append("    where S1b says otherwise.")
+    lines.append("  - Run-to-run variance on this machine is wide when anything else is running.")
+    lines.append("    Compare medians within one report, not across reports.")
     lines.append("  - Mutant counts differ slightly by design; see tools/parity for the exact,")
     lines.append("    triaged inventory difference.")
 

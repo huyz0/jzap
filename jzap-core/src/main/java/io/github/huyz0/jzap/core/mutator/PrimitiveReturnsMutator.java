@@ -19,12 +19,23 @@ public final class PrimitiveReturnsMutator extends ReturnValueMutator {
         return ID;
     }
 
-    @Override
-    protected boolean applies(Type returnType) {
+    public static boolean appliesTo(Type returnType) {
         return switch (returnType.getSort()) {
             case Type.BYTE, Type.SHORT, Type.CHAR, Type.INT, Type.LONG, Type.FLOAT, Type.DOUBLE -> true;
             default -> false;
         };
+    }
+
+    public static boolean isNoOp(int lastOpcode) {
+        return switch (lastOpcode) {
+            case Opcodes.ICONST_0, Opcodes.LCONST_0, Opcodes.FCONST_0, Opcodes.DCONST_0 -> true;
+            default -> false;
+        };
+    }
+
+    @Override
+    protected boolean applies(Type returnType) {
+        return appliesTo(returnType);
     }
 
     @Override
@@ -34,22 +45,16 @@ public final class PrimitiveReturnsMutator extends ReturnValueMutator {
 
     @Override
     protected boolean wouldBeNoOp(int opcode, Object constant) {
-        return switch (returnTypeZeroOpcode(opcode)) {
-            case 1 -> true;
-            default -> false;
-        };
-    }
-
-    /** 1 when the preceding instruction already pushed a zero of some numeric type. */
-    private static int returnTypeZeroOpcode(int opcode) {
-        return switch (opcode) {
-            case Opcodes.ICONST_0, Opcodes.LCONST_0, Opcodes.FCONST_0, Opcodes.DCONST_0 -> 1;
-            default -> 0;
-        };
+        return isNoOp(opcode);
     }
 
     @Override
     protected void pushReplacement(MethodVisitor mv, Type returnType) {
+        pushZero(mv, returnType);
+    }
+
+    /** Pushes the zero of this numeric type. */
+    public static void pushZero(MethodVisitor mv, Type returnType) {
         switch (returnType.getSort()) {
             case Type.LONG -> mv.visitInsn(Opcodes.LCONST_0);
             case Type.FLOAT -> mv.visitInsn(Opcodes.FCONST_0);

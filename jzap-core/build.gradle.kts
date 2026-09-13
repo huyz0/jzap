@@ -1,6 +1,10 @@
 dependencies {
     api(project(":jzap-model"))
     api(project(":jzap-wire"))
+    // Compile-only: the engine needs the agent's constants and nothing else, and the agent is
+    // always present in the analysis JVM it talks to. Keeping it off the runtime classpath keeps
+    // the controller's dependencies honest.
+    compileOnly(project(":jzap-agent"))
     implementation(libs.asm)
     implementation(libs.asm.tree)
     implementation(libs.asm.commons)
