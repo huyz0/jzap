@@ -67,6 +67,19 @@ public final class Fixture {
         return new Fixture("jzap.blocking.descriptor", ":fixtures:blocking-java");
     }
 
+    /**
+     * Two classes, where one class's tests also execute the other's code.
+     *
+     * <p>The combination that catches mutants leaking across classes. A worker analyses a whole
+     * class at a time and installs one schemata class per class; the mutant it selects is a single
+     * global index, so a schemata class left installed from an earlier class answers to the index
+     * being selected for the current one. Every other fixture here has either one class with
+     * coverage or two that never call each other, which is why this needs its own.
+     */
+    public static Fixture crosstalk() {
+        return new Fixture("jzap.crosstalk.descriptor", ":fixtures:crosstalk-java");
+    }
+
     public static Fixture kotest() {
         return new Fixture("jzap.kotest.descriptor", ":fixtures:kotest-sample");
     }

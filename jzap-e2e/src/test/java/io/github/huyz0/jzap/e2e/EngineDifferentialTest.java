@@ -61,6 +61,16 @@ class EngineDifferentialTest {
     }
 
     @Test
+    void theEnginesAgreeWhenOneClassesTestsExerciseAnother() {
+        // The case the other fixtures cannot produce, and the one schemata gets wrong on its own.
+        // Schemata indices are numbered per class and selected by one global switch, so the class
+        // analysed first stays selectable while the second is analysed unless its schemata is
+        // uninstalled first. Naive redefinition has no such state, so a disagreement here is
+        // schemata running two mutants at once.
+        assertEnginesAgree(Fixture.crosstalk().model(Scope.all()), "the crosstalk fixture");
+    }
+
+    @Test
     void theEnginesAgreeAcrossModules() {
         assertEnginesAgree(Fixture.multiModule(), "the multi-module fixture");
     }

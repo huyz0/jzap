@@ -105,7 +105,38 @@ final class MutantExecutor {
             runInParallel(threads, queue, batch);
         }
         results.addAll(batch.analysed());
+        results.addAll(neverAnalysed(covered, batch));
         return results;
+    }
+
+    /**
+     * Covered mutants no worker returned a verdict for, reported as errors rather than dropped.
+     *
+     * <p>A worker that fails outright takes the class it was holding with it, and those mutants
+     * would otherwise simply not appear in the result. That is worse than an error: the mutation
+     * score is a ratio over the mutants present, so a run that lost work would report a *higher*
+     * score than the same run intact, and nothing in the output would say so.
+     *
+     * <p>Not written to the cache. There is no verdict here to reuse -- only the fact that this
+     * run failed to reach one.
+     */
+    private List<Mutant> neverAnalysed(List<Mutant> covered, Batch batch) {
+        if (batch.analysed().size() == covered.size()) {
+            return List.of();
+        }
+        Set<MutantKey> produced = new LinkedHashSet<>();
+        batch.analysed().forEach(mutant -> produced.add(mutant.key()));
+        List<Mutant> missing = covered.stream()
+                .filter(mutant -> !produced.contains(mutant.key()))
+                .map(mutant -> mutant.withOutcome(MutantStatus.RUN_ERROR, null,
+                        batch.selections().get(mutant.key()).size(), 0, 0))
+                .toList();
+        if (!missing.isEmpty()) {
+            listener.warning(missing.size() + " mutant(s) were never analysed because an analysis "
+                    + "worker failed. They are reported as errors rather than left out, so the "
+                    + "score is not inflated by the work that was lost.");
+        }
+        return missing;
     }
 
     /**
@@ -270,8 +301,8 @@ final class MutantExecutor {
             try {
                 List<Mutant> classBatch;
                 while ((classBatch = queue.poll()) != null) {
+                    uninstallSchemata();
                     schemata = buildSchemata(classBatch);
-                    minionsHoldingSchemata.clear();
                     for (Mutant mutant : classBatch) {
                         batch.analysed().add(analyseOne(mutant));
                         listener.progress(batch.done().incrementAndGet(), batch.total());
@@ -386,7 +417,11 @@ final class MutantExecutor {
                 } else {
                     minion.setOverride(mutant.key().className(), mutated);
                 }
-            } catch (WireException | IllegalStateException e) {
+            } catch (MinionProcess.HungException | WireException | IllegalStateException e) {
+                // HungException is not a WireException. Before it was named here, a control round
+                // trip that timed out -- starting a JVM, preparing its harness, installing a class
+                // -- unwound out of the worker instead of failing one mutant, which lost every
+                // remaining mutant of the class it was holding.
                 return failGroup(mutant, module.id(), verdict, e.getMessage());
             }
             try {
@@ -468,6 +503,33 @@ final class MutantExecutor {
                 minion.setOverride(schemata.className(), schemata.bytes());
                 timings.addSince("executionSchemataInstall", start);
             }
+        }
+
+        /**
+         * Takes the previous class's schemata class back out of every JVM holding it.
+         *
+         * <p>Required for a verdict to mean anything. Schemata indices are numbered from zero
+         * within each class and selected by one global switch, so a schemata class still installed
+         * from an earlier class answers to the index chosen for the current one -- two mutants run
+         * at once, and a mutant its own tests never detected is reported killed because a mutation
+         * in some other class broke an unrelated assertion. Costs one round trip per class, against
+         * one per mutant saved.
+         */
+        private void uninstallSchemata() {
+            for (String moduleId : List.copyOf(minionsHoldingSchemata)) {
+                MinionProcess minion = minions.get(moduleId);
+                if (minion == null) {
+                    continue;
+                }
+                try {
+                    minion.clearOverrides();
+                } catch (RuntimeException e) {
+                    // A JVM that will not say it cleared the last mutant cannot be trusted to be
+                    // running only the next one, so it does not get to serve another.
+                    discard(moduleId);
+                }
+            }
+            minionsHoldingSchemata.clear();
         }
 
         private void recycleAll() {
