@@ -165,7 +165,26 @@ public final class Minion {
             respondOk(channel);
         } catch (RuntimeException | LinkageError e) {
             // A class that cannot even be installed is a non-viable mutant, not a run error.
+            // Leave nothing behind: install() records the bytes before it retransforms, so a
+            // refused retransformation leaves an override registered that was never applied, and
+            // the controller is entitled to keep using this JVM after being told.
+            discardFailedOverride(className);
             error(channel, "cannot install mutant in " + className + ": " + describe(e));
+        }
+    }
+
+    /**
+     * Drops an override whose installation failed, so this JVM is left as it was.
+     *
+     * <p>Failing here rather than there would be no better, so a second failure is swallowed: the
+     * controller is about to be told the mutant was refused either way, and it rechecks the JVM's
+     * state before reusing it.
+     */
+    private static void discardFailedOverride(String className) {
+        try {
+            ClassOverrides.remove(className);
+        } catch (RuntimeException | LinkageError ignored) {
+            // nothing further to try; the controller decides whether to keep this JVM
         }
     }
 

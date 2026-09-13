@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
 /**
  * A forked analysis JVM, from the controller's side.
@@ -47,6 +48,21 @@ final class MinionProcess implements AutoCloseable {
     /** Thrown when a mutant hangs the analysis JVM. The process must then be destroyed. */
     public static final class HungException extends RuntimeException {
         public HungException(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * Thrown when the analysis JVM refuses a mutant's bytecode outright.
+     *
+     * <p>Distinct from {@link WireException} because it is a fact about the mutant rather than a
+     * failure of the analysis: the JVM would not verify or link the mutated class, which is what
+     * NON_VIABLE means. Reported as a protocol failure instead, it becomes a RUN_ERROR -- a status
+     * jzap documents as always being its own bug or the environment's -- and takes a warning and a
+     * destroyed analysis JVM with it.
+     */
+    public static final class NonViableException extends RuntimeException {
+        public NonViableException(String message) {
             super(message);
         }
     }
@@ -202,13 +218,39 @@ final class MinionProcess implements AutoCloseable {
         }
     }
 
-    public void setOverride(String className, byte[] bytes) {
+    /**
+     * Installs one mutant's class.
+     *
+     * <p>A refusal is the mutant's problem, so it is reported as {@link NonViableException}: these
+     * bytes are a mutation of the user's own compiled class, and a JVM that will not verify them
+     * is telling us the mutant is not a program.
+     */
+    public void installMutant(String className, byte[] bytes) {
+        sendOverride(className, bytes);
+        expectOk("installing a mutant in " + className,
+                reported -> new NonViableException("the analysis JVM refused the mutant in "
+                        + className + ": " + reported));
+    }
+
+    /**
+     * Installs a schemata class.
+     *
+     * <p>A refusal here is not a mutant being non-viable: jzap generated this class, so a JVM that
+     * will not take it is reporting a defect in the transformer, and every mutant compiled into it
+     * is affected. That has to surface as an error rather than as a property of the code under
+     * test.
+     */
+    public void installSchemata(String className, byte[] bytes) {
+        sendOverride(className, bytes);
+        expectOk("installing the schemata class for " + className);
+    }
+
+    private void sendOverride(String className, byte[] bytes) {
         channel.readTimeout(CONTROL_TIMEOUT_MILLIS);
         channel.writeByte(Wire.CMD_SET_OVERRIDE);
         channel.writeString(className);
         channel.writeBytes(bytes);
         channel.flush();
-        expectOk("installing a mutant in " + className);
     }
 
     public void clearOverrides() {
@@ -260,13 +302,23 @@ final class MinionProcess implements AutoCloseable {
     }
 
     private void expectOk(String what) {
+        expectOk(what, reported ->
+                new WireException("analysis JVM failed while " + what + ": " + reported));
+    }
+
+    /**
+     * @param onReportedError what to throw when the minion answers with a reason of its own, as
+     *                        opposed to the channel breaking or timing out. Only the minion's own
+     *                        reply can mean anything more specific than "the analysis failed".
+     */
+    private void expectOk(String what, Function<String, RuntimeException> onReportedError) {
         try {
             int response = channel.readByte();
             if (response == Wire.RESP_OK) {
                 return;
             }
             if (response == Wire.RESP_ERROR) {
-                throw new WireException("analysis JVM failed while " + what + ": " + channel.readString());
+                throw onReportedError.apply(channel.readString());
             }
             throw new WireException("unexpected response " + response + " while " + what);
         } catch (SocketTimeoutException e) {

@@ -412,16 +412,30 @@ final class MutantExecutor {
             MinionProcess minion;
             try {
                 minion = minionFor(module);
-                if (schemataIndex != null) {
-                    installSchemataIfNeeded(minion, module.id());
-                } else {
-                    minion.setOverride(mutant.key().className(), mutated);
-                }
             } catch (MinionProcess.HungException | WireException | IllegalStateException e) {
                 // HungException is not a WireException. Before it was named here, a control round
                 // trip that timed out -- starting a JVM, preparing its harness, installing a class
                 // -- unwound out of the worker instead of failing one mutant, which lost every
                 // remaining mutant of the class it was holding.
+                return failGroup(mutant, module.id(), verdict, e.getMessage());
+            }
+            try {
+                if (schemataIndex != null) {
+                    installSchemataIfNeeded(minion, module.id());
+                } else {
+                    minion.installMutant(mutant.key().className(), mutated);
+                }
+            } catch (MinionProcess.NonViableException e) {
+                // The JVM would not verify or link the mutated class. That is what NON_VIABLE
+                // means, and it is a fact about the mutant rather than a failure of the analysis:
+                // it costs one verdict, no warning, and -- provided the JVM can be put back to a
+                // known state -- not the JVM either.
+                verdict.status = MutantStatus.NON_VIABLE;
+                if (!resetOverrides(minion, module.id())) {
+                    discard(module.id());
+                }
+                return false;
+            } catch (MinionProcess.HungException | WireException | IllegalStateException e) {
                 return failGroup(mutant, module.id(), verdict, e.getMessage());
             }
             try {
@@ -453,6 +467,25 @@ final class MutantExecutor {
                 return false;
             } catch (WireException | IllegalStateException e) {
                 return failGroup(mutant, module.id(), verdict, e.getMessage());
+            }
+        }
+
+        /**
+         * Puts a JVM back to holding no overrides at all.
+         *
+         * <p>Needed after a refused install, because the minion records the bytes before it
+         * retransforms: a refusal leaves an override registered that was never applied, and the
+         * next mutant would run against a JVM in a state nobody asked for.
+         *
+         * @return whether the JVM can be trusted to serve another mutant
+         */
+        private boolean resetOverrides(MinionProcess minion, String moduleId) {
+            try {
+                minion.clearOverrides();
+                minionsHoldingSchemata.remove(moduleId);
+                return true;
+            } catch (RuntimeException e) {
+                return false;
             }
         }
 
@@ -500,7 +533,7 @@ final class MutantExecutor {
         private void installSchemataIfNeeded(MinionProcess minion, String moduleId) {
             if (minionsHoldingSchemata.add(moduleId)) {
                 long start = System.nanoTime();
-                minion.setOverride(schemata.className(), schemata.bytes());
+                minion.installSchemata(schemata.className(), schemata.bytes());
                 timings.addSince("executionSchemataInstall", start);
             }
         }

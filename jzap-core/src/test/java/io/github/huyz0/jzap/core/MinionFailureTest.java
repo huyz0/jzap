@@ -212,13 +212,19 @@ class MinionFailureTest {
             // retransformation rather than a recording.
             minion.runTests(tests, Long.MAX_VALUE, 60_000, MutantSwitch.NONE);
 
-            WireException e = assertThrows(WireException.class,
-                    () -> minion.setOverride("sample.Discount", new byte[]{1, 2, 3, 4}));
+            MinionProcess.NonViableException e = assertThrows(MinionProcess.NonViableException.class,
+                    () -> minion.installMutant("sample.Discount", new byte[]{1, 2, 3, 4}),
+                    "a JVM that refuses the bytes is saying the mutant is not a program, which is "
+                            + "NON_VIABLE -- not a protocol failure, which would be a RUN_ERROR");
 
             assertTrue(e.getMessage().contains("sample.Discount"),
                     "the message has to name the class: " + e.getMessage());
             assertTrue(minion.isAlive(),
                     "one unusable mutant must not cost the whole analysis JVM");
+            // And it has to be usable, not merely alive: install() records the bytes before it
+            // retransforms, so the refused override must not be left behind.
+            minion.clearOverrides();
+            assertTrue(minion.isAlive());
         }
     }
 
@@ -229,10 +235,29 @@ class MinionFailureTest {
             minion.prepareTests(module.testClassPaths());
 
             // Nothing is loaded yet, so there is nothing to retransform and nothing to reject.
-            minion.setOverride("sample.NeverLoaded", new byte[]{1, 2, 3, 4});
+            minion.installMutant("sample.NeverLoaded", new byte[]{1, 2, 3, 4});
             minion.clearOverrides();
 
             assertTrue(minion.isAlive());
+        }
+    }
+
+    /**
+     * A schemata class the JVM refuses is jzap's fault, not the mutant's.
+     *
+     * <p>jzap generated those bytes, so a refusal says the transformer produced something invalid
+     * and every mutant compiled into that class is affected. Reporting it as NON_VIABLE would
+     * describe it as a property of the code under test and raise the score while doing so.
+     */
+    @Test
+    void aRefusedSchemataClassIsAnErrorRatherThanANonViableMutant() {
+        ModuleModel module = fixtureModule();
+        try (MinionProcess minion = MinionProcess.start(module, RuntimeJars.discover())) {
+            List<String> tests = minion.listTests(module.testClassPaths());
+            minion.runTests(tests, Long.MAX_VALUE, 60_000, MutantSwitch.NONE);
+
+            assertThrows(WireException.class,
+                    () -> minion.installSchemata("sample.Discount", new byte[]{1, 2, 3, 4}));
         }
     }
 
