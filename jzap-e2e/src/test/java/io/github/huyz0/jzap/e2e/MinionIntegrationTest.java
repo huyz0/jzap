@@ -41,7 +41,7 @@ class MinionIntegrationTest {
         List<String> hitProbeReport = new ArrayList<>();
         int totalHits = 0;
         String minionOutput;
-        try (MinionProcess minion = MinionProcess.start(module, RuntimeJars.discover(), true)) {
+        try (MinionProcess minion = MinionProcess.start(module, RuntimeJars.discover())) {
             minion.initCoverage(index.size(), instrumented);
             List<String> tests = minion.listTests(module.testClassPaths());
             assertEquals(3, tests.size(), "expected the fixture's three tests, got " + tests);
@@ -75,7 +75,7 @@ class MinionIntegrationTest {
         }
 
         boolean sawDiscountLine = false;
-        try (MinionProcess minion = MinionProcess.start(module, RuntimeJars.discover(), true)) {
+        try (MinionProcess minion = MinionProcess.start(module, RuntimeJars.discover())) {
             minion.initCoverage(index.size(), instrumented);
             List<String> tests = minion.listTests(module.testClassPaths());
             for (String test : tests) {

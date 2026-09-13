@@ -60,10 +60,10 @@ public final class MinionProcess implements AutoCloseable {
         this.drain.start();
     }
 
-    public static MinionProcess start(ModuleModel module, RuntimeJars.Jars jars, boolean withAgent) {
+    public static MinionProcess start(ModuleModel module, RuntimeJars.Jars jars) {
         try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             server.setSoTimeout(60_000);
-            List<String> command = buildCommand(module, jars, server.getLocalPort(), withAgent);
+            List<String> command = buildCommand(module, jars, server.getLocalPort());
             ProcessBuilder builder = new ProcessBuilder(command);
             builder.redirectErrorStream(true);
             Process process = builder.start();
@@ -81,16 +81,15 @@ public final class MinionProcess implements AutoCloseable {
         }
     }
 
-    private static List<String> buildCommand(ModuleModel module, RuntimeJars.Jars jars, int port,
-                                             boolean withAgent) {
+    private static List<String> buildCommand(ModuleModel module, RuntimeJars.Jars jars, int port) {
         String javaHome = module.javaHome() != null && !module.javaHome().isBlank()
                 ? module.javaHome()
                 : System.getProperty("java.home");
         List<String> command = new ArrayList<>();
         command.add(Path.of(javaHome, "bin", "java").toString());
-        if (withAgent) {
-            command.add("-javaagent:" + jars.agent());
-        }
+        // Always: the agent is what installs mutants and collects probes, so a minion without it
+        // cannot do either job. Minion.requireHarness refuses to run tests if it is missing.
+        command.add("-javaagent:" + jars.agent());
         command.addAll(module.jvmArgs());
         command.add("-cp");
         List<String> classpath = new ArrayList<>();

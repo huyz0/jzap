@@ -1,5 +1,7 @@
 package io.github.huyz0.jzap.model;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -8,7 +10,9 @@ import java.util.Map;
  * parity harness, so its shape is part of jzap's public contract.
  *
  * @param mutants        every mutant in scope, with its outcome, in stable key order
- * @param timings        phase durations in millis, keyed by phase name
+ * @param timings        phase durations in millis, keyed by phase name, in the order they
+ *                       were measured. Order is preserved rather than copied away because the
+ *                       JSON report is meant to be byte-stable between runs of the same shape.
  * @param testsDiscovered number of tests found during the coverage phase
  * @param scopeSummary   human-readable description of what was analysed
  * @param engine         engine id that produced this result, e.g. {@code naive}
@@ -29,7 +33,11 @@ public record AnalysisResult(
 
     public AnalysisResult {
         mutants = mutants == null ? List.of() : List.copyOf(mutants);
-        timings = timings == null ? Map.of() : Map.copyOf(timings);
+        // Map.copyOf would drop the iteration order, which the JSON report's determinism
+        // depends on.
+        timings = timings == null
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(timings));
         failingBaselineTests = failingBaselineTests == null ? List.of() : List.copyOf(failingBaselineTests);
     }
 
