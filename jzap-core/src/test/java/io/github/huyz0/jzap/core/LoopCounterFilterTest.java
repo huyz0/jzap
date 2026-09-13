@@ -19,6 +19,40 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class LoopCounterFilterTest {
 
+    /**
+     * Three increments on one source line, one of which seeds no mutant.
+     *
+     * <p>A "for" update list puts them all on the line of the "for": total += 1 in the body,
+     * a += 0 in the update, and i++ in the update. a += 0 cannot be negated into anything
+     * different, so it seeds no mutant and takes no ordinal -- and this filter recomputes
+     * ordinals from the bytecode, so it has to skip that increment too. Counting it would make
+     * the filter name ordinal 2 while the loop counter is ordinal 1, so the loop counter mutant
+     * would survive the filter that exists to remove it.
+     */
+    @Test
+    void anIncrementThatSeedsNoMutantTakesNoOrdinalFromTheOnesThatDo() {
+        String source = """
+                package ex;
+                public class Mixed {
+                    public int twoOnOneLine(int n) {
+                        int a = 0;
+                        int total = 0;
+                        for (int i = 0; i < n; a += 0, i++) { total += 1; }
+                        return total + a;
+                    }
+                }
+                """;
+        byte[] bytes = InMemoryJavac.compile("ex.Mixed", source).get("ex.Mixed");
+
+        List<Mutant> increments = MutationEngine.withDefaults().discover(":t", bytes).stream()
+                .filter(m -> m.key().mutator().equals("INCREMENTS"))
+                .toList();
+
+        assertEquals(1, increments.size(),
+                () -> "only total += 1 should survive: a += 0 seeds nothing and i++ drives the "
+                        + "loop, but got " + increments.stream().map(m -> m.key().asString()).toList());
+    }
+
     private static final String SOURCE = """
             package ex;
             public class Loops {

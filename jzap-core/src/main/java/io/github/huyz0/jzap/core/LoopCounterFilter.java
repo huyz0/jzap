@@ -1,5 +1,7 @@
 package io.github.huyz0.jzap.core;
 
+import io.github.huyz0.jzap.core.mutator.IncrementsMutator;
+
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -39,7 +41,15 @@ final class LoopCounterFilter {
 
     public static final String ID = "LOOP_COUNTER";
 
-    /** Identity of a filtered mutant, matching how {@link MutationContext} assigns ordinals. */
+    /**
+     * Identity of a filtered mutant, matching how {@link MutationContext} assigns ordinals.
+     *
+     * <p>"Matching" is a real obligation, not a note. The ordinal is recomputed here from the
+     * bytecode, so this is a second implementation of the rule in
+     * {@link MutationContext#register}: per method, per line, counting only the increments that
+     * actually seed a mutant. If the two disagree by one, this filter suppresses a different
+     * mutant than the one it identified.
+     */
     record Position(String methodName, String descriptor, int line, int ordinal) {
     }
 
@@ -93,6 +103,14 @@ final class LoopCounterFilter {
                 continue;
             }
             if (!(insn instanceof IincInsnNode iinc)) {
+                continue;
+            }
+            if (!IncrementsMutator.canNegate(iinc.incr)) {
+                // No mutant is seeded here, so no ordinal is taken here either. Counting it would
+                // shift every later ordinal on this line past the mutant it belongs to, and this
+                // filter would then suppress an ordinal nothing has -- leaving the loop counter
+                // mutant in, which is the whole point of the filter. javac can put three
+                // increments on one line: a "for" update list does exactly that.
                 continue;
             }
             int ordinal = ordinalPerLine.merge(line, 0, (a, b) -> a + 1);

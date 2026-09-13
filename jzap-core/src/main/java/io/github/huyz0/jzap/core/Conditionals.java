@@ -55,10 +55,20 @@ final class Conditionals {
     private Conditionals() {
     }
 
+    /** The dispatch method standing in for this jump, or null if there is none. */
+    static String nameOf(int opcode) {
+        return NAMES.get(opcode);
+    }
+
+    /** The dispatch method's descriptor, or null if there is none. */
+    static String descriptorOf(int opcode) {
+        return DESCRIPTORS.get(opcode);
+    }
+
     static void emit(MethodVisitor mv, int opcode, int boundaryId, int negateId) {
         Bytecode.pushInt(mv, boundaryId);
         Bytecode.pushInt(mv, negateId);
         mv.visitMethodInsn(Opcodes.INVOKESTATIC, SchemataTransformer.OPS,
-                NAMES.get(opcode), DESCRIPTORS.get(opcode), false);
+                nameOf(opcode), descriptorOf(opcode), false);
     }
 }

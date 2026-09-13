@@ -259,6 +259,12 @@ final class SchemataTransformer {
 
         @Override
         public void visitIincInsn(int varIndex, int increment) {
+            if (!IncrementsMutator.canNegate(increment)) {
+                // Declined by the mutating pass too, and therefore taking no ordinal here either.
+                forget();
+                super.visitIincInsn(varIndex, increment);
+                return;
+            }
             int id = ctx.schemataIndex(ctx.register(IncrementsMutator.ID));
             forget();
             if (id < 0) {
