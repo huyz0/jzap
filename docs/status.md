@@ -48,6 +48,11 @@ SMAP table, and the emitted declaration correctly reports no coverage because Ko
 execute it. Coverage is keyed by (class, method, line) so a call site and the declaration cannot
 share a probe.
 
+**A Maven plugin**: `jzap:mutationCoverage`, bound to `verify`, configured with an
+`<engineClasspath>` and the same options as the Gradle plugin. Built by Maven rather than by this
+repository's Gradle build, and checked by `./gradlew mavenSmokeTest`, which runs a real Maven build
+and asserts a hand-derived result.
+
 **Multi-module projects in one pass**, so a test in one module kills a mutant in another. The
 Gradle plugin's `mutationTestAll` covers a whole reactor in one invocation. Analysed module at a
 time — which is what a per-module task does — a library module with no tests of its own reports
@@ -194,7 +199,6 @@ differentially tested against.
 | Mutant schemata (compile once, all mutants as guarded branches) | M8b |
 | Warm daemon with in-JVM mutant switching and static-state reset | M9 |
 | Block-granularity coverage | M10 |
-| Maven plugin | M19 |
 
 Also absent: Tier C corpora (parity runs against the hand-written and generated fixtures only),
 and the JUnit 4 and TestNG adapters behind the `jzap-testkit` SPI. Kotest works at spec

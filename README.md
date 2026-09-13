@@ -32,6 +32,24 @@ jzap {
 ./gradlew mutationTestDiff    # only lines changed since HEAD, including uncommitted work
 ```
 
+## Maven
+
+```xml
+<plugin>
+  <groupId>io.github.huyz0</groupId>
+  <artifactId>jzap-maven-plugin</artifactId>
+  <version>0.1.0</version>
+  <configuration>
+    <threshold>80</threshold>
+  </configuration>
+</plugin>
+```
+
+```bash
+mvn verify                      # bound to the verify phase
+mvn jzap:mutationCoverage       # or on its own
+```
+
 ## Try it without a build tool
 
 ```bash
@@ -98,6 +116,7 @@ jzap-git      git ranges and unified diffs, resolved to line ranges
 jzap-report   console, JSON, mutation-testing-elements, HTML, PR annotations
 jzap-cli      the command line
 jzap-gradle   the Gradle adapter: source sets and toolchains in, project model out
+jzap-maven    the Maven adapter, built by Maven because plugin descriptors are
 ```
 
 Kotlin is analysed the same way, with the compiler's own scaffolding filtered out and inline

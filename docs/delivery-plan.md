@@ -859,7 +859,21 @@ testing does not exist there
 
 ## M19 · Maven plugin
 
-**Not started.**
+**Done.** Goal `jzap:mutationCoverage`, bound to `verify` by default, computing the model from the
+reactor's output directories, test classpath and compile source roots, and forking the engine
+exactly as the Gradle plugin does. Verified by `./gradlew mavenSmokeTest`, which runs a real Maven
+build against a generated project and checks a hand-derived expectation.
+
+Built by Maven rather than by this repository's Gradle build, and deliberately not wired into
+`build`: a Maven plugin needs a generated plugin descriptor and `maven-plugin-plugin` is what
+generates it. Hand-writing that descriptor would work right up until it silently did not, and
+making the ordinary build depend on Maven and a network to produce it is a worse trade than one
+explicit task.
+
+Outstanding: reactor-wide single invocation (the mojo is per-module; the engine supports the
+multi-module case and the Gradle plugin exposes it, so this is wiring rather than capability),
+the `mutators` parameter is accepted but not yet passed through, and the migration note for
+`pitest-maven` users.
 
 **Goal.** Maven parity, reusing the same seam.
 
