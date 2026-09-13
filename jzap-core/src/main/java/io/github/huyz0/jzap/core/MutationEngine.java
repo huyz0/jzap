@@ -1,16 +1,20 @@
 package io.github.huyz0.jzap.core;
 
+import io.github.huyz0.jzap.core.mutator.IncrementsMutator;
 import io.github.huyz0.jzap.model.Mutant;
 import io.github.huyz0.jzap.model.MutantKey;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Discovers mutants in a class and produces the bytecode for one of them.
@@ -23,81 +27,31 @@ import java.util.Set;
 public final class MutationEngine {
 
     private final List<Mutator> mutators;
-    private final boolean filterLoopCounters;
-    private final boolean dedup;
-    private final boolean arid;
-    private final boolean onePerLine;
-    private final boolean kotlinFilters;
+    private final MutantFilters filters;
 
-    /** Counts of what the equivalence filter dropped, for the reduction report. */
-    private int equivalentDropped;
-    private int duplicateDropped;
-    private int aridDropped;
-    private int onePerLineDropped;
-    private int kotlinJunkDropped;
+    private final Reduction.Tally dropped = new Reduction.Tally();
 
+    /** Discovers with the default filters: loop counters and Kotlin-generated code suppressed. */
     public MutationEngine(List<Mutator> mutators) {
-        this(mutators, true, false, false, false, true);
+        this(mutators, MutantFilters.defaults());
     }
 
-    /**
-     * @param filterLoopCounters suppress INCREMENTS mutants on loop counters. On by default;
-     *                           see {@link LoopCounterFilter} for the measurements behind that.
-     */
-    public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters) {
-        this(mutators, filterLoopCounters, false, false, false, true);
-    }
-
-    public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters, boolean dedup) {
-        this(mutators, filterLoopCounters, dedup, false, false, true);
-    }
-
-    public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters, boolean dedup,
-                          boolean arid, boolean onePerLine) {
-        this(mutators, filterLoopCounters, dedup, arid, onePerLine, true);
-    }
-
-    /**
-     * @param dedup      drop mutants whose compiled form matches the original's or another
-     *                   mutant's; see {@link EquivalenceFilter}
-     * @param arid       drop mutants in code that reports rather than decides; see
-     *                   {@link AridFilter}
-     * @param onePerLine keep at most one mutant per source line
-     * @param kotlinFilters drop mutants in constructs the Kotlin compiler generated. On by
-     *                   default, and inert for classes javac produced; see {@link KotlinFilter}
-     */
-    public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters, boolean dedup,
-                          boolean arid, boolean onePerLine, boolean kotlinFilters) {
+    public MutationEngine(List<Mutator> mutators, MutantFilters filters) {
         this.mutators = List.copyOf(mutators);
-        this.filterLoopCounters = filterLoopCounters;
-        this.dedup = dedup;
-        this.arid = arid;
-        this.onePerLine = onePerLine;
-        this.kotlinFilters = kotlinFilters;
-    }
-
-    public int kotlinJunkDropped() {
-        return kotlinJunkDropped;
-    }
-
-    public int equivalentDropped() {
-        return equivalentDropped;
-    }
-
-    public int duplicateDropped() {
-        return duplicateDropped;
-    }
-
-    public int aridDropped() {
-        return aridDropped;
-    }
-
-    public int onePerLineDropped() {
-        return onePerLineDropped;
+        this.filters = filters;
     }
 
     public static MutationEngine withDefaults() {
         return new MutationEngine(Mutators.defaults());
+    }
+
+    /**
+     * What the filters have dropped so far, accumulated across every class discovered.
+     *
+     * <p>Cumulative on purpose: the reduction report is about a whole run, not one class.
+     */
+    public Reduction reduction() {
+        return dropped.snapshot();
     }
 
     /** Every mutant this engine can seed into the class, in deterministic bytecode order. */
@@ -109,35 +63,28 @@ public final class MutationEngine {
     }
 
     /**
-     * Bytecode for the class with exactly one mutant applied.
-     *
-     * @throws IllegalStateException if the mutant could not be seeded, which means the key
-     *                               does not match this bytecode — a cache or staleness bug
-     *                               rather than a user error
-     */
-    /**
      * Drops filtered mutants after collection rather than during it, so ordinals are assigned
      * identically in both phases and {@link #apply} can still find any key discovery returned.
      */
     private List<Mutant> filter(List<Mutant> discovered, byte[] classBytes) {
         // Order matters: cheap structural filters first, then the expensive one that has to
         // generate bytecode for every surviving mutant.
-        List<Mutant> kept = filterLoopCounters
+        List<Mutant> kept = filters.loopCounters()
                 ? withoutLoopCounters(discovered, classBytes)
                 : discovered;
-        if (kotlinFilters) {
+        if (filters.kotlinJunk()) {
             kept = withoutKotlinJunk(kept, classBytes);
         }
-        if (arid) {
+        if (filters.arid()) {
             kept = withoutAridCode(kept, classBytes);
         }
-        if (onePerLine) {
+        if (filters.onePerLine()) {
             kept = onePerLine(kept);
         }
-        if (dedup) {
+        if (filters.equivalence()) {
             EquivalenceFilter.Result result = EquivalenceFilter.apply(this, classBytes, kept);
-            equivalentDropped += result.equivalent().size();
-            duplicateDropped += result.duplicates().size();
+            dropped.equivalent += result.equivalent().size();
+            dropped.duplicate += result.duplicates().size();
             kept = result.kept();
         }
         return kept;
@@ -145,29 +92,31 @@ public final class MutationEngine {
 
     private List<Mutant> withoutKotlinJunk(List<Mutant> discovered, byte[] classBytes) {
         Set<KotlinFilter.Position> positions = KotlinFilter.junkPositions(classBytes);
-        if (positions.isEmpty()) {
-            return discovered;
-        }
-        List<Mutant> kept = new ArrayList<>(discovered.size());
-        for (Mutant m : discovered) {
-            if (KotlinFilter.drops(positions, m)) {
-                kotlinJunkDropped++;
-            } else {
-                kept.add(m);
-            }
-        }
-        return kept;
+        return without(discovered, m -> KotlinFilter.drops(positions, m),
+                positions.isEmpty(), () -> dropped.kotlinJunk++);
     }
 
     private List<Mutant> withoutAridCode(List<Mutant> discovered, byte[] classBytes) {
         Set<AridFilter.Position> positions = AridFilter.aridPositions(classBytes);
-        if (positions.isEmpty()) {
+        return without(discovered, m -> AridFilter.drops(positions, m),
+                positions.isEmpty(), () -> dropped.arid++);
+    }
+
+    /**
+     * Drops the mutants a position-based filter rejects, counting them as it goes.
+     *
+     * @param nothingToDrop the filter found no positions, so the list is returned untouched
+     *                      rather than copied -- the common case, since most classes have none
+     */
+    private static List<Mutant> without(List<Mutant> discovered, Predicate<Mutant> drops,
+                                        boolean nothingToDrop, Runnable count) {
+        if (nothingToDrop) {
             return discovered;
         }
         List<Mutant> kept = new ArrayList<>(discovered.size());
         for (Mutant m : discovered) {
-            if (AridFilter.drops(positions, m)) {
-                aridDropped++;
+            if (drops.test(m)) {
+                count.run();
             } else {
                 kept.add(m);
             }
@@ -183,7 +132,7 @@ public final class MutationEngine {
      * the first in bytecode order, which is deterministic and therefore reproducible.
      */
     private List<Mutant> onePerLine(List<Mutant> discovered) {
-        Set<String> seen = new java.util.LinkedHashSet<>();
+        Set<String> seen = new LinkedHashSet<>();
         List<Mutant> kept = new ArrayList<>();
         for (Mutant m : discovered) {
             String line = m.key().className() + "#" + m.key().methodName()
@@ -191,7 +140,7 @@ public final class MutationEngine {
             if (seen.add(line)) {
                 kept.add(m);
             } else {
-                onePerLineDropped++;
+                dropped.onePerLine++;
             }
         }
         return kept;
@@ -204,7 +153,7 @@ public final class MutationEngine {
         }
         List<Mutant> kept = new ArrayList<>(discovered.size());
         for (Mutant m : discovered) {
-            boolean isLoopCounter = m.key().mutator().equals(io.github.huyz0.jzap.core.mutator.IncrementsMutator.ID)
+            boolean isLoopCounter = m.key().mutator().equals(IncrementsMutator.ID)
                     && suppressed.contains(new LoopCounterFilter.Position(
                             m.key().methodName(), m.key().descriptor(), m.key().line(), m.key().ordinal()));
             if (!isLoopCounter) {
@@ -224,6 +173,13 @@ public final class MutationEngine {
         return apply(classBytes, key, false);
     }
 
+    /**
+     * Bytecode for the class with exactly one mutant applied.
+     *
+     * @throws IllegalStateException if the mutant could not be seeded, which means the key
+     *                               does not match this bytecode — a cache or staleness bug
+     *                               rather than a user error
+     */
     public byte[] apply(byte[] classBytes, MutantKey key) {
         return apply(classBytes, key, true);
     }
@@ -256,7 +212,6 @@ public final class MutationEngine {
 
         private final MutationContext ctx;
         private final List<Mutator> mutators;
-
         private final boolean guardLoops;
 
         MutatingClassVisitor(ClassVisitor next, MutationContext ctx, List<Mutator> mutators,
@@ -305,7 +260,7 @@ public final class MutationEngine {
         }
 
         @Override
-        public void visitLineNumber(int line, org.objectweb.asm.Label start) {
+        public void visitLineNumber(int line, Label start) {
             ctx.line(line);
             super.visitLineNumber(line, start);
         }

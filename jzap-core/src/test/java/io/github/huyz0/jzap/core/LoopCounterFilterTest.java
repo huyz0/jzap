@@ -55,7 +55,8 @@ class LoopCounterFilterTest {
 
     private static Set<String> incrementMethods(boolean filterLoopCounters) {
         byte[] bytes = InMemoryJavac.compile("ex.Loops", SOURCE).get("ex.Loops");
-        List<Mutant> mutants = new MutationEngine(Mutators.defaults(), filterLoopCounters)
+        List<Mutant> mutants = new MutationEngine(Mutators.defaults(),
+                MutantFilters.defaults().withLoopCounters(filterLoopCounters))
                 .discover(":test", bytes);
         return mutants.stream()
                 .filter(m -> m.key().mutator().equals("INCREMENTS"))
@@ -82,7 +83,7 @@ class LoopCounterFilterTest {
     @Test
     void filteringLeavesEveryRemainingKeyApplicable() {
         byte[] bytes = InMemoryJavac.compile("ex.Loops", SOURCE).get("ex.Loops");
-        MutationEngine engine = new MutationEngine(Mutators.defaults(), true);
+        MutationEngine engine = new MutationEngine(Mutators.defaults());
 
         // Filtering happens after ordinals are assigned, so a surviving key must still seed.
         // If filtering shifted ordinals, apply() would throw or seed the wrong mutant.
@@ -109,7 +110,7 @@ class LoopCounterFilterTest {
                 """;
         byte[] bytes = InMemoryJavac.compile("ex.Nested", nested).get("ex.Nested");
 
-        List<Mutant> increments = new MutationEngine(Mutators.defaults(), true)
+        List<Mutant> increments = new MutationEngine(Mutators.defaults())
                 .discover(":test", bytes).stream()
                 .filter(m -> m.key().mutator().equals("INCREMENTS"))
                 .toList();
@@ -122,7 +123,7 @@ class LoopCounterFilterTest {
     @Test
     void discoveryStaysDeterministicWithTheFilterOn() {
         byte[] bytes = InMemoryJavac.compile("ex.Loops", SOURCE).get("ex.Loops");
-        MutationEngine engine = new MutationEngine(Mutators.defaults(), true);
+        MutationEngine engine = new MutationEngine(Mutators.defaults());
 
         assertEquals(
                 engine.discover(":test", bytes).stream().map(m -> m.key().asString()).toList(),
@@ -144,8 +145,9 @@ class LoopCounterFilterTest {
         byte[] bytes = InMemoryJavac.compile("ex.Flat", noLoops).get("ex.Flat");
 
         Map<Boolean, List<Mutant>> both = Map.of(
-                true, new MutationEngine(Mutators.defaults(), true).discover(":t", bytes),
-                false, new MutationEngine(Mutators.defaults(), false).discover(":t", bytes));
+                true, new MutationEngine(Mutators.defaults()).discover(":t", bytes),
+                false, new MutationEngine(Mutators.defaults(),
+                        MutantFilters.defaults().withLoopCounters(false)).discover(":t", bytes));
 
         assertEquals(both.get(false).size(), both.get(true).size(),
                 "a class with no loops must be unaffected by the filter");

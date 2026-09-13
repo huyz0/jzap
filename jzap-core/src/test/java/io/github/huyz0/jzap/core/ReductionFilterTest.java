@@ -47,7 +47,8 @@ class ReductionFilterTest {
     }
 
     private static List<Mutant> discover(boolean dedup, boolean arid, boolean onePerLine) {
-        return new MutationEngine(Mutators.defaults(), true, dedup, arid, onePerLine)
+        return new MutationEngine(Mutators.defaults(), MutantFilters.defaults()
+                .withEquivalence(dedup).withArid(arid).withOnePerLine(onePerLine))
                 .discover(":test", compiled());
     }
 
@@ -111,7 +112,8 @@ class ReductionFilterTest {
         assertTrue(deduped.size() <= unfiltered.size());
         // Every surviving mutant must still be applicable: dedup runs after ordinals are
         // assigned, so dropping must not shift the keys of what remains.
-        MutationEngine engine = new MutationEngine(Mutators.defaults(), true, true);
+        MutationEngine engine = new MutationEngine(
+                Mutators.defaults(), MutantFilters.defaults().withEquivalence(true));
         byte[] bytes = compiled();
         for (Mutant m : deduped) {
             engine.apply(bytes, m.key());

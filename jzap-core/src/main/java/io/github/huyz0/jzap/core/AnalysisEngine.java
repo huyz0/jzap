@@ -13,6 +13,7 @@ import io.github.huyz0.jzap.model.Scope;
 import io.github.huyz0.jzap.wire.Wire;
 import io.github.huyz0.jzap.wire.WireException;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -31,6 +32,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 /**
  * The reference engine: one mutant at a time, in a forked JVM, with coverage-driven test
@@ -52,9 +54,6 @@ public final class AnalysisEngine {
 
     /** The reference implementation's id, kept for comparison against every optimisation. */
     public static final String NAIVE_ENGINE = "naive";
-
-    /** Filter id for keeping at most one mutant per source line. */
-    public static final String ONE_PER_LINE = "ONE_PER_LINE";
 
     /** Progress reporting. Implementations must tolerate being called from any thread. */
     public interface Listener {
@@ -86,6 +85,7 @@ public final class AnalysisEngine {
     private final ProjectModel model;
     private final Listener listener;
     private final RuntimeJars.Jars jars;
+    private final MutantFilters filters;
     private final MutationEngine mutation;
     private final AtomicInteger reusedFromCache = new AtomicInteger();
 
@@ -110,13 +110,8 @@ public final class AnalysisEngine {
         this.model = model;
         this.listener = listener == null ? Listener.SILENT : listener;
         this.jars = RuntimeJars.discover();
-        this.mutation = new MutationEngine(
-                Mutators.resolve(model.scope().mutators()),
-                model.scope().isFilterEnabled(LoopCounterFilter.ID),
-                model.scope().isOptionalFilterEnabled(EquivalenceFilter.ID),
-                model.scope().isOptionalFilterEnabled(AridFilter.ID),
-                model.scope().isOptionalFilterEnabled(ONE_PER_LINE),
-                model.scope().isFilterEnabled(KotlinFilter.ID));
+        this.filters = MutantFilters.from(model.scope());
+        this.mutation = new MutationEngine(Mutators.resolve(model.scope().mutators()), filters);
     }
 
     /**
@@ -244,7 +239,7 @@ public final class AnalysisEngine {
         List<String> missing = new ArrayList<>();
         for (ModuleModel module : model.modules()) {
             for (String path : module.mutableCodePaths()) {
-                if (!java.nio.file.Files.exists(Path.of(path))) {
+                if (!Files.exists(Path.of(path))) {
                     missing.add(path);
                 }
             }
@@ -818,35 +813,8 @@ public final class AnalysisEngine {
                 EngineVersion.get(),
                 String.join(",", Mutators.resolve(model.scope().mutators()).stream()
                         .map(Mutator::id).sorted().toList()),
-                effectiveFilters(),
+                filters.cacheKey(),
                 config.toolchain() != null ? config.toolchain() : Hashes.toolchain()));
-    }
-
-    /**
-     * The filters actually in force, for the cache header.
-     *
-     * <p>Load-bearing rather than decorative: every filter changes the inventory, so a cache that
-     * ignored the set would serve verdicts for a different set of mutants.
-     */
-    private String effectiveFilters() {
-        List<String> active = new ArrayList<>();
-        if (model.scope().isFilterEnabled(LoopCounterFilter.ID)) {
-            active.add(LoopCounterFilter.ID);
-        }
-        if (model.scope().isFilterEnabled(KotlinFilter.ID)) {
-            active.add(KotlinFilter.ID);
-        }
-        if (model.scope().isOptionalFilterEnabled(EquivalenceFilter.ID)) {
-            active.add(EquivalenceFilter.ID);
-        }
-        if (model.scope().isOptionalFilterEnabled(AridFilter.ID)) {
-            active.add(AridFilter.ID);
-        }
-        if (model.scope().isOptionalFilterEnabled(ONE_PER_LINE)) {
-            active.add(ONE_PER_LINE);
-        }
-        active.sort(String::compareTo);
-        return String.join(",", active);
     }
 
     private String describeModules() {
@@ -883,7 +851,7 @@ public final class AnalysisEngine {
             List<String> testIds,
             Map<String, String> testModules,
             Map<String, String> testClassHashes,
-            java.util.function.Function<MutantKey, Optional<String>> previousKillingTest) {
+            Function<MutantKey, Optional<String>> previousKillingTest) {
 
         /**
          * Tests that execute the mutated line: the one that killed it last time first, then the

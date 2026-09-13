@@ -79,7 +79,8 @@ class EquivalenceFilterTest {
     @Test
     void keptMutantsAreStillApplicable() {
         byte[] bytes = compiled();
-        MutationEngine engine = new MutationEngine(Mutators.defaults(), true, true);
+        MutationEngine engine = new MutationEngine(
+                Mutators.defaults(), MutantFilters.defaults().withEquivalence(true));
 
         // Dropping happens after ordinals are assigned, so what survives must still seed.
         for (Mutant m : engine.discover(":test", bytes)) {

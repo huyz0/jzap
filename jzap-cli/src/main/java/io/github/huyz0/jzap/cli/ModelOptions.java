@@ -1,5 +1,10 @@
 package io.github.huyz0.jzap.cli;
 
+import io.github.huyz0.jzap.core.AridFilter;
+import io.github.huyz0.jzap.core.EquivalenceFilter;
+import io.github.huyz0.jzap.core.KotlinFilter;
+import io.github.huyz0.jzap.core.LoopCounterFilter;
+import io.github.huyz0.jzap.core.MutantFilters;
 import io.github.huyz0.jzap.model.ModelIo;
 import io.github.huyz0.jzap.model.ProjectModel;
 import io.github.huyz0.jzap.model.Scope;
@@ -8,6 +13,8 @@ import picocli.CommandLine.Option;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /** The options every command shares: which model to read, and how to narrow its scope. */
@@ -79,29 +86,29 @@ final class ModelOptions {
 
     /** Default-on filters the user asked to switch off, plus whatever the model already listed. */
     private List<String> disabledFilters(Scope fromModel) {
-        List<String> filters = new java.util.ArrayList<>(fromModel.disabledFilters());
+        List<String> filters = new ArrayList<>(fromModel.disabledFilters());
         if (mutateLoopCounters) {
-            filters.add(io.github.huyz0.jzap.core.LoopCounterFilter.ID);
+            filters.add(LoopCounterFilter.ID);
         }
         if (mutateKotlinInternals) {
-            filters.add(io.github.huyz0.jzap.core.KotlinFilter.ID);
+            filters.add(KotlinFilter.ID);
         }
-        return List.copyOf(new java.util.LinkedHashSet<>(filters));
+        return List.copyOf(new LinkedHashSet<>(filters));
     }
 
     /** Filters that are off unless asked for, plus whatever the model already requested. */
     private List<String> optionalFilters(Scope fromModel) {
-        List<String> filters = new java.util.ArrayList<>(fromModel.enabledFilters());
+        List<String> filters = new ArrayList<>(fromModel.enabledFilters());
         if (dedup) {
-            filters.add(io.github.huyz0.jzap.core.EquivalenceFilter.ID);
+            filters.add(EquivalenceFilter.ID);
         }
         if (arid) {
-            filters.add(io.github.huyz0.jzap.core.AridFilter.ID);
+            filters.add(AridFilter.ID);
         }
         if (onePerLine) {
-            filters.add(io.github.huyz0.jzap.core.AnalysisEngine.ONE_PER_LINE);
+            filters.add(MutantFilters.ONE_PER_LINE);
         }
-        return List.copyOf(new java.util.LinkedHashSet<>(filters));
+        return List.copyOf(new LinkedHashSet<>(filters));
     }
 
     ProjectModel read() {
