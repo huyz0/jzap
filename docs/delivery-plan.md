@@ -373,7 +373,37 @@ than met by adjusting the target.
 
 ## M9 · Warm daemon and state reset
 
-**Not started.**
+**Done, narrower than planned, and the narrowing is the interesting part.**
+
+**The daemon.** `jzap run --daemon` hands the invocation to a resident jzap, starting one if there
+is none; `jzap daemon --status`/`--stop` manage it. One daemon per project model, keyed by the
+model's absolute path, exiting on its own after thirty minutes idle so a forgotten daemon is a
+temporary condition. It runs the very same command with `--daemon` dropped, so there is one
+implementation and behaviour cannot drift between the two paths.
+
+Measured on a warm-cache run: **0.35s to 0.17s**. That is the tool's own startup -- JVM, class
+loading, JIT warmup -- which on a cached run is most of the wall clock, because the analysis itself
+is a cache read.
+
+**What it deliberately does not do** is keep analysis JVMs alive between invocations. That would
+save more, and it would mean holding the code under test loaded in a process that outlives the
+build which produced it. The plan asked for state reset to make that safe; the measurement changed
+the shape of the problem, because the incremental cache had already removed most of the cost the
+warm-JVM reuse was meant to remove.
+
+**State reset, replaced by measurement.** Rather than building UniAPR-style static-state reset on
+the assumption it is needed, jzap now *tests* whether reuse is sound: every fixture is analysed
+with one JVM per mutant and with the default bounded reuse, and every verdict must match. There is
+a fixture written to leak -- a running counter and a memoised field -- specifically so the test
+would fail if bounded recycling were not enough. It passes. If a real project ever fails that gate,
+the reset machinery is what to build, and there will be a case that demonstrates the need.
+
+This also matters more since M8b than it did when the plan was written: schemata no longer
+redefines a class per mutant, so an analysis JVM lives through more mutants than it used to.
+
+Outstanding from the original definition of done: analysis-JVM reuse across invocations, the
+escalation path for classes whose state cannot be reset, and concurrent invocations against one
+daemon.
 
 **Goal.** Amortise JVM startup, class loading, and JIT warmup across mutants and across
 invocations — soundly.

@@ -37,6 +37,11 @@ final class Fixture {
         return new Fixture("jzap.red.descriptor", ":fixtures:red-java");
     }
 
+    /** A fixture whose production code keeps static state across calls. */
+    static Fixture stateful() {
+        return new Fixture("jzap.stateful.descriptor", ":fixtures:stateful-java");
+    }
+
     static Fixture kotest() {
         return new Fixture("jzap.kotest.descriptor", ":fixtures:kotest-sample");
     }
@@ -122,6 +127,16 @@ final class Fixture {
     }
 
     ProjectModel model(Scope scope) {
-        return new ProjectModel(1, List.of(module()), scope, null, List.of("json"), 1, 1.5, 4000, 100, null);
+        return new ProjectModel(1, List.of(module()), scope, null, List.of("json"), 1, 1.5, 4000,
+                100, null);
+    }
+
+    /**
+     * @param maxMutantsPerMinion 1 gives every mutant a JVM of its own, which is the sound but
+     *                            slow way and therefore the reference for whether reuse is safe
+     */
+    ProjectModel model(Scope scope, int maxMutantsPerMinion) {
+        return new ProjectModel(1, List.of(module()), scope, null, List.of("json"), 1, 1.5, 4000,
+                maxMutantsPerMinion, null);
     }
 }

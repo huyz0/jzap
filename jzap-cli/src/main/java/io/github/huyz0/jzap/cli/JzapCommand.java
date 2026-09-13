@@ -6,7 +6,8 @@ import picocli.CommandLine.Command;
         name = "jzap",
         mixinStandardHelpOptions = true,
         version = "jzap 0.1.0-SNAPSHOT",
-        subcommands = {RunCommand.class, ListMutantsCommand.class, MutatorsCommand.class},
+        subcommands = {RunCommand.class, ListMutantsCommand.class, MutatorsCommand.class,
+                DaemonCommand.class},
         synopsisSubcommandLabel = "COMMAND",
         description = "Fast, diff-aware mutation testing for the JVM.")
 final class JzapCommand implements Runnable {

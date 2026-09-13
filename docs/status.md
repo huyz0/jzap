@@ -74,6 +74,17 @@ fixture one-per-line halves the mutant count for a 1.9x speedup and stops report
 genuine gaps; TCE drops nothing at all on javac output, for a reason worth reading in
 [delivery-plan.md](delivery-plan.md).
 
+**A resident daemon.** `jzap run --daemon` hands the work to a jzap that is already warm, saving
+the tool's own JVM startup — on a cached run, most of the wall clock. Measured at 0.35s to 0.17s.
+It deliberately does not keep analysis JVMs alive between invocations: that would mean holding the
+code under test loaded in a process outliving the build that produced it, for a saving the cache
+has already largely taken.
+
+**A soundness gate on JVM reuse.** Reusing an analysis JVM between mutants is an optimisation with
+a correctness question attached, so every fixture is analysed both with one JVM per mutant and with
+the default bounded reuse, and every verdict must match. One fixture is written to leak static
+state on purpose so the gate would fail if bounded recycling were not enough.
+
 **An incremental cache**, opt-in with `--cache-dir` or `jzap { cacheDir = ... }`. It caches both
 verdicts and the per-test coverage map. A killed mutant's verdict is reused when its killing test
 still covers it and that test's class is unchanged; an unkilled mutant's only when the covering
@@ -205,7 +216,6 @@ differentially tested against.
 
 | Missing | Milestone |
 |---|---|
-| Warm daemon with in-JVM mutant switching and static-state reset | M9 |
 | Block-granularity coverage | M10 |
 
 Also absent: Tier C corpora (parity runs against the hand-written and generated fixtures only),

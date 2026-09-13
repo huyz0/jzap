@@ -58,6 +58,11 @@ final class RunCommand implements Callable<Integer> {
                     + "should not start reusing without being asked.")
     Path cacheDir;
 
+    @Option(names = "--daemon",
+            description = "Run in a resident jzap for this project, starting one if needed. Saves "
+                    + "the tool's own JVM startup, which is most of the wall clock on a cached run.")
+    boolean daemon;
+
     @Option(names = "--engine", paramLabel = "schemata|naive",
             description = "schemata compiles every mutant of a class in at once and selects one "
                     + "with a field write; naive redefines the class per mutant and is kept as the "
@@ -69,8 +74,15 @@ final class RunCommand implements Callable<Integer> {
                     + "defaults to one per available processor.")
     Integer threads;
 
+    /** Set when this command is already running inside the daemon, to stop it recursing. */
+    static final String IN_DAEMON = "jzap.inDaemon";
+
     @Override
     public Integer call() {
+        if (daemon && System.getProperty(IN_DAEMON) == null) {
+            return runInDaemon();
+        }
+
         ProjectModel model;
         ChangedLines changed;
         try {
@@ -123,6 +135,56 @@ final class RunCommand implements Callable<Integer> {
         }
 
         return exitCode(result);
+    }
+
+    /**
+     * Hands this invocation to the resident jzap, starting one if there is none.
+     *
+     * <p>The daemon runs the very same command with {@code --daemon} dropped, so behaviour cannot
+     * drift between the two paths: there is only one implementation.
+     */
+    private int runInDaemon() {
+        List<String> forwarded = new ArrayList<>(List.of("run",
+                "-m", modelOptions.modelFile.toAbsolutePath().toString(),
+                "-o", reportDir.toAbsolutePath().toString()));
+        if (modelOptions.from != null) {
+            forwarded.addAll(List.of("--from", modelOptions.from));
+        }
+        if (modelOptions.to != null) {
+            forwarded.addAll(List.of("--to", modelOptions.to));
+        }
+        if (cacheDir != null) {
+            forwarded.addAll(List.of("--cache-dir", cacheDir.toString()));
+        }
+        if (threads != null) {
+            forwarded.addAll(List.of("--threads", threads.toString()));
+        }
+        if (engine != null) {
+            forwarded.addAll(List.of("--engine", engine));
+        }
+        if (threshold != null) {
+            forwarded.addAll(List.of("--threshold", threshold.toString()));
+        }
+        if (quiet) {
+            forwarded.add("--quiet");
+        }
+
+        var response = Daemon.run(modelOptions.modelFile, forwarded);
+        if (response.isEmpty()) {
+            if (!Daemon.start(modelOptions.modelFile, List.of("-D" + IN_DAEMON + "=true"))) {
+                System.err.println("jzap: could not start a daemon; running in this process instead");
+                daemon = false;
+                return call();
+            }
+            response = Daemon.run(modelOptions.modelFile, forwarded);
+        }
+        if (response.isEmpty()) {
+            System.err.println("jzap: the daemon did not answer; running in this process instead");
+            daemon = false;
+            return call();
+        }
+        System.out.print(response.get().output());
+        return response.get().exitCode();
     }
 
     private int exitCode(AnalysisResult result) {
