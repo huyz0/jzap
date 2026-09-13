@@ -47,8 +47,8 @@
  *       compiles every mutant of a class in at once. {@code CoverageInstrumenter} and
  *       {@code ProbeIndex} place and name the coverage probes, {@code BackEdgeInstrumenter} the
  *       runaway-loop guard. {@code MutationContext} carries where we are and whether to act, and
- *       {@code LineNumberTracker} keeps it current. {@code Bytecode}, {@code Opcodes2},
- *       {@code MathNames}, {@code Conditionals} and {@code ReturnRules} are the emission helpers
+ *       {@code LineNumberTracker} keeps it current. {@code Bytecode}, {@code MathNames},
+ *       {@code Conditionals} and {@code ReturnRules} are the emission helpers
  *       shared with the mutators; {@code MethodFilter} says which methods are worth visiting.</dd>
  *
  *   <dt>Which mutants to keep</dt>
