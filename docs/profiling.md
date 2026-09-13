@@ -76,9 +76,9 @@ compatibility with every engine for half a millisecond.
 
 ### Block-granularity coverage: no headroom
 
-Measured separately, in [delivery-plan.md](delivery-plan.md) under M10. Tests actually run per
-mutant are already 1.00–1.11 across all fixtures, because kill-test-first ordering and early exit
-get there first.
+Measured separately, and recorded in [delivery-plan.md](delivery-plan.md). Tests actually run
+per mutant are already 1.00–1.11 across all fixtures, because kill-test-first ordering and early
+exit get there first.
 
 ## Leads measured and closed on value
 

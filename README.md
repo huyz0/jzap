@@ -144,7 +144,7 @@ nobody noticed. See [docs/parity-and-benchmarks.md](docs/parity-and-benchmarks.m
 - [docs/status.md](docs/status.md) — what works today, what does not
 - [docs/prior-art.md](docs/prior-art.md) — the research this is built on
 - [docs/architecture.md](docs/architecture.md) — the build-tool-agnostic core
-- [docs/delivery-plan.md](docs/delivery-plan.md) — 23 milestones, with kill criteria
+- [docs/delivery-plan.md](docs/delivery-plan.md) — the phased delivery plan, with kill criteria
 - [docs/parity-and-benchmarks.md](docs/parity-and-benchmarks.md) — the PIT comparison harness
 - [docs/profiling.md](docs/profiling.md) — where the time goes, and which optimisations were not worth doing
 - [docs/troubleshooting.md](docs/troubleshooting.md) — the failures people actually hit

@@ -252,21 +252,22 @@ appears to.
 Two milestones were closed by measurement rather than by code, and the numbers are in
 [delivery-plan.md](delivery-plan.md):
 
-- **Block-granularity coverage (M10).** Its purpose is to select fewer tests per mutant. Across all
+- **Block-granularity coverage.** Its purpose is to select fewer tests per mutant. Across all
   four fixtures the tests actually *run* per mutant are already 1.0-1.11: kill-test-first ordering
   and early exit reach the floor first. It would still help a project with broad integration tests
   and many survivors, where every covering test runs because none of them kills — and that is the
   condition to check before building it.
-- **The Kotlin IR frontend (M17).** The bytecode path already produces clean Kotlin mutants with
+- **The Kotlin IR frontend.** The bytecode path already produces clean Kotlin mutants with
   correct source lines. An IR frontend would improve them at the margins and couple jzap hard to
   compiler internals, which is what pins mutflow to a single Kotlin version.
 
 ## Known limitations of what does exist
 
 - **Line-granularity coverage** selects more tests than necessary. Block granularity with
-  exception-correct attribution is M10.
+  exception-correct attribution is not built; the section above has the measurement that
+  decided against it for now.
 - **Static state between mutants** is bounded by recycling the analysis JVM every
-  `maxMutantsPerMinion` mutants, not by resetting it. Proper reset is M9.
+  `maxMutantsPerMinion` mutants, not by resetting it. Resetting statics in place is not built.
 - **`TIMED_OUT` is still never cached.** Loop detection is deterministic, but the wall-clock
   backstop that catches blocking mutants is not, and the two are not distinguished at the point
   the cache is written. The verdict itself is reproducible; only its reuse is withheld.

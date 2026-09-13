@@ -23,8 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * contains. Discovery returns one container per spec and no leaves at all. jzap used to collect
  * only leaf descriptors, so for a Kotest project it found zero tests, reported every mutant as
  * uncovered, and printed a plausible-looking score of 0% with no error anywhere. That silence is
- * the reason this milestone exists and the reason these assertions are about counts rather than
- * about the run merely completing.
+ * the reason Kotest is supported explicitly, and the reason these assertions are about counts
+ * rather than about the run merely completing.
  */
 class KotestAnalysisTest {
 

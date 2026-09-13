@@ -196,6 +196,6 @@ See [prior-art.md](prior-art.md) for the research these choices rest on.
 
 ## Delivery
 
-See [delivery-plan.md](delivery-plan.md) for milestones and
+See [delivery-plan.md](delivery-plan.md) for the delivery plan and
 [parity-and-benchmarks.md](parity-and-benchmarks.md) for the PIT comparison harness that
-gates them.
+gates it.

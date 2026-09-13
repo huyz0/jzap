@@ -16,7 +16,7 @@ import java.util.Locale;
  *
  * <p>This is jzap's own format, not a reimplementation of arcmutate's {@code gitci} output:
  * that format is theirs and undocumented here, so claiming compatibility would be a promise
- * this file cannot keep. The shape below is what the CI integrations of M13 consume.
+ * this file cannot keep. The shape below is what a CI integration consumes.
  */
 final class AnnotationsJsonReporter implements Reporter {
 

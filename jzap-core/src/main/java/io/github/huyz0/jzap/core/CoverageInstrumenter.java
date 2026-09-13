@@ -12,9 +12,9 @@ import org.objectweb.asm.Opcodes;
  * Inserts a probe call at the start of every source line of a target class.
  *
  * <p>Line granularity, not basic-block granularity. Block-level coverage with
- * exception-correct attribution is the better design — it is where PIT's own PR #534 goes —
- * and it is scheduled for M10 in docs/delivery-plan.md. Line granularity is sound but selects
- * more tests than strictly necessary.
+ * exception-correct attribution is the better design — it is where PIT's own PR #534 goes — and
+ * it is not built here. Line granularity is sound but selects more tests than strictly
+ * necessary: a mutant on a line the test reached but whose block it never entered is still run.
  *
  * <p>Probes are emitted lazily, immediately before the first real instruction of a line,
  * rather than at the point the line number is visited. ASM reports a label, then its line

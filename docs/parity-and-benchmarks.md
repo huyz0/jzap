@@ -1,8 +1,8 @@
 # PIT parity and benchmark harness
 
 PIT is jzap's correctness oracle and its performance baseline. This harness is not a
-release-time validation step — it is built early (M4/M7) and every subsequent milestone
-is gated on it. Nothing about the engine is believed until this harness says so.
+release-time validation step — it is built before the engine it judges, and everything built
+afterwards is gated on it. Nothing about the engine is believed until this harness says so.
 
 Referenced by [delivery-plan.md](delivery-plan.md).
 
@@ -14,7 +14,7 @@ burden of proof is on jzap. The harness exists to make every disagreement visibl
 force it to be explained.
 
 The comparison is only meaningful if mutant sets can be aligned, which is why the mutator
-catalog ships with an explicit PIT mapping (M3) before the harness is built.
+catalog ships with an explicit PIT mapping, written before the harness that consumes it.
 
 ## 2. Corpus
 
@@ -94,7 +94,7 @@ Three comparisons, in increasing strictness:
 
 Every disagreement must be classified as exactly one of:
 
-- **A — jzap bug.** Fix before the milestone closes.
+- **A — jzap bug.** Fix before the work that exposed it is called done.
 - **B — PIT limitation.** Documented with a reference (e.g. static initialiser coverage
   attribution, inline-function mutant loss). A Tier A fixture with a hand-written
   expectation is added proving jzap is right.
@@ -102,7 +102,7 @@ Every disagreement must be classified as exactly one of:
 - **D — nondeterminism in the project under test.** See flakiness control below; the
   mutant is quarantined and reported as a test-quality signal, not a parity failure.
 
-Unclassified disagreements block the milestone. The baseline file
+An unclassified disagreement blocks the change that produced it. The baseline file
 (`parity-baseline.yaml`) records every accepted B/C/D with its justification; CI fails on
 any disagreement not present in the baseline, and also fails when a baselined
 disagreement *disappears* without the baseline being updated (that means behaviour moved
@@ -116,9 +116,9 @@ and reported. A rising flaky count is itself a regression.
 
 ### Self-differential testing
 
-The naive engine from M6 is kept forever as a reference implementation, behind a flag.
-Every optimisation milestone (M8–M12) must produce identical verdicts to the naive engine
-on Tier A and Tier B, with the optimisation enabled and disabled. This catches bugs PIT
+The naive engine — one mutant at a time, in its own JVM — is kept forever as a reference
+implementation, behind a flag. Every optimisation must produce identical verdicts to it on
+Tier A and Tier B, with the optimisation enabled and disabled. This catches bugs PIT
 comparison cannot — e.g. schemata state leakage between mutants, or a cache returning a
 stale verdict — because it holds the mutant set fixed and varies only our own machinery.
 
@@ -188,15 +188,15 @@ execution / reporting), mutants generated, mutants executed, **test executions p
 mutant**, mutants/second, peak RSS, total CPU-seconds (the number that maps to CI cost),
 and JVM process count.
 
-`test executions per mutant` is the metric to watch during M10 — it measures selection
-quality directly and, unlike wall clock, is machine-independent and therefore safe to
-assert in CI.
+`test executions per mutant` is the metric to watch when working on coverage granularity —
+it measures selection quality directly and, unlike wall clock, is machine-independent and
+therefore safe to assert in CI.
 
 ### Fairness rules
 
 These exist because it is easy to publish a flattering and meaningless number:
 
-- Never compare jzap's reduced mutant set (M12) against PIT's full set on a time axis.
+- Never compare a reduced jzap mutant set against PIT's full set on a time axis.
   Reduction changes what is measured, so those comparisons report time **and** the
   quantified detection loss, side by side.
 - Any scenario where jzap loses is published with the same prominence as one it wins.

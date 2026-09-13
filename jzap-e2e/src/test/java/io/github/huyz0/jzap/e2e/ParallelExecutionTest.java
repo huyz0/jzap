@@ -119,8 +119,8 @@ class ParallelExecutionTest {
 
     @Test
     void timedOutIsNotTreatedAsACacheableVerdict() {
-        // Stated as a test because M11's cache will depend on it: a wall-clock timeout is not
-        // reproducible, so reusing it later would be reporting a guess as a result.
+        // Stated as a test because the cache depends on it: a wall-clock timeout is not
+        // reproducible, so storing one would report a guess as a result on every later run.
         assertFalse(MutantStatus.TIMED_OUT.isCacheable());
         assertTrue(MutantStatus.TIMED_OUT.isDetected(),
                 "a mutant that hangs the suite is still detected by it");

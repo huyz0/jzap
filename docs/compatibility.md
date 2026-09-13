@@ -58,8 +58,8 @@ recognise are specific to what kotlinc emits, and a much older or newer compiler
 - **JPMS module path.** The analysis JVM is started with a classpath. A project that must run on the
   module path is not covered.
 - **Scala, Groovy and other JVM languages.** They compile to bytecode so mutation works, but their
-  compiler-generated constructs have no filters, so expect junk mutants of the kind Kotlin had
-  before M15.
+  compiler-generated constructs have no filters, so expect junk mutants of the kind Kotlin
+  produced before its filters were written.
 
 ## Versioning
 

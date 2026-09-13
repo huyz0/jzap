@@ -34,8 +34,8 @@ import java.util.Set;
  * Writes a project model and runs the engine against it.
  *
  * <p>Declares its inputs and outputs so Gradle can skip it when nothing has changed. Full
- * build-cache relocatability waits on the content-hash keying of M11: the report currently
- * embeds phase timings, which differ between runs by design.
+ * build-cache relocatability waits on keying the report by content: it currently embeds phase
+ * timings, which differ between runs by design.
  */
 public abstract class JzapTask extends DefaultTask {
 
