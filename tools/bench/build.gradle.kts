@@ -44,3 +44,30 @@ tasks.register<Exec>("bench") {
         )
     }
 }
+
+/**
+ * Measures what each mutant-reduction technique removes and what it costs in detection.
+ *
+ * Separate from the speed benchmark because a reduction figure without its loss figure is not a
+ * result, it is an advertisement.
+ */
+tasks.register<Exec>("reduction") {
+    dependsOn(":jzap-cli:installDist", ":fixtures:bench-java:writeFixtureDescriptor")
+
+    val script = file("reduction.py")
+    val descriptor = benchFixture.layout.buildDirectory.file("fixture.properties")
+    val cli = project(":jzap-cli").layout.buildDirectory.file("install/jzap/bin/jzap")
+    val out = layout.buildDirectory.dir("reduction")
+    val runs = (findProperty("benchRuns") as String? ?: "2")
+
+    doFirst {
+        out.get().asFile.mkdirs()
+        commandLine(
+            "python3", script.absolutePath,
+            "--descriptor", descriptor.get().asFile.absolutePath,
+            "--jzap", cli.get().asFile.absolutePath,
+            "--out", out.get().asFile.absolutePath,
+            "--runs", runs,
+        )
+    }
+}

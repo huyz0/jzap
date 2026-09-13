@@ -19,9 +19,12 @@ import java.util.List;
  * @param includeClasses glob patterns of classes to include; empty means all
  * @param excludeClasses glob patterns of classes to exclude
  * @param mutators    mutator ids to use; empty means the default set
- * @param disabledFilters ids of mutant filters to switch off. Filters suppress mutants that
- *                    are judged not worth seeding, which is a judgement a user may disagree
+ * @param disabledFilters ids of default-on mutant filters to switch off. Filters suppress
+ *                    mutants judged not worth seeding, which is a judgement a user may disagree
  *                    with, so each one can be turned off by name.
+ * @param enabledFilters ids of default-off filters to switch on. Separate from
+ *                    {@code disabledFilters} because the two answer different questions: one
+ *                    overrides a default, the other opts into something jzap will not do unasked.
  */
 public record Scope(
         ScopeKind kind,
@@ -32,7 +35,8 @@ public record Scope(
         List<String> includeClasses,
         List<String> excludeClasses,
         List<String> mutators,
-        List<String> disabledFilters) {
+        List<String> disabledFilters,
+        List<String> enabledFilters) {
 
     public static final String LOCAL = "-Local-";
     public static final String EMPTY_TREE = "-Empty-";
@@ -44,6 +48,7 @@ public record Scope(
         excludeClasses = excludeClasses == null ? List.of() : List.copyOf(excludeClasses);
         mutators = mutators == null ? List.of() : List.copyOf(mutators);
         disabledFilters = disabledFilters == null ? List.of() : List.copyOf(disabledFilters);
+        enabledFilters = enabledFilters == null ? List.of() : List.copyOf(enabledFilters);
         if (!granularity.equals("line") && !granularity.equals("class")) {
             throw new IllegalArgumentException("granularity must be 'line' or 'class', got: " + granularity);
         }
@@ -51,19 +56,25 @@ public record Scope(
 
     public static Scope all() {
         return new Scope(ScopeKind.ALL, null, null, "line", null,
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     public static Scope diff(String from, String to) {
         return new Scope(ScopeKind.DIFF, from, to, "line", null,
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     public boolean isClassGranularity() {
         return "class".equals(granularity);
     }
 
+    /** Whether a filter that is on by default is still on. */
     public boolean isFilterEnabled(String filterId) {
         return !disabledFilters.contains(filterId);
+    }
+
+    /** Whether a filter that is off by default has been asked for. */
+    public boolean isOptionalFilterEnabled(String filterId) {
+        return enabledFilters.contains(filterId);
     }
 }

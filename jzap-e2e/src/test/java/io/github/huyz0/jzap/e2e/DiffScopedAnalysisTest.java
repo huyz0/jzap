@@ -37,7 +37,7 @@ class DiffScopedAnalysisTest {
 
     private static Scope diffScope() {
         return new Scope(ScopeKind.PATCH, null, null, "line", null,
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     private static ChangedLines onlyLine(int line) {
@@ -119,7 +119,7 @@ class DiffScopedAnalysisTest {
     @Test
     void classGranularityWidensToTheWholeChangedClass() {
         Scope classScope = new Scope(ScopeKind.PATCH, null, null, "class", null,
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of());
 
         AnalysisResult result = new AnalysisEngine(scoped(classScope), AnalysisEngine.Listener.SILENT)
                 .analyse(onlyLine(ARITHMETIC_LINE));

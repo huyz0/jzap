@@ -1,0 +1,40 @@
+# Call targets whose mutation is not worth seeding, as owner#method globs.
+#
+# Rules as data rather than code, following Google's arid-node approach: which code is
+# "uninteresting" is a judgement that gets tuned from developer feedback, and a judgement that
+# needs a release to change does not get tuned.
+#
+# Two rules use this list:
+#   1. A VOID_METHOD_CALLS mutant whose target matches is dropped. Removing a log statement is
+#      not a fault a test should be expected to catch.
+#   2. A void method whose only calls are all arid is treated as arid throughout. That is the
+#      shape of a method that exists to report, not to decide.
+#
+# Enable with --arid. Off by default, because PIT does not do this and every dropped mutant
+# would otherwise become an unexplained difference against the correctness oracle.
+
+# SLF4J and the frameworks that implement it
+org/slf4j/Logger#*
+org/slf4j/spi/LoggingEventBuilder#*
+ch/qos/logback/*#*
+
+# java.util.logging
+java/util/logging/Logger#*
+
+# Log4j
+org/apache/logging/log4j/Logger#*
+org/apache/log4j/Category#*
+
+# Apache Commons Logging
+org/apache/commons/logging/Log#*
+
+# Printing to the console
+java/io/PrintStream#print
+java/io/PrintStream#println
+java/io/PrintStream#printf
+java/io/PrintWriter#print
+java/io/PrintWriter#println
+java/io/PrintWriter#printf
+
+# Stack traces
+java/lang/Throwable#printStackTrace

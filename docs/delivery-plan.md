@@ -457,7 +457,37 @@ one: reusing it would silently report every mutant in the missing classes as unc
 
 ## M12 · Mutant reduction
 
-**Not started.**
+**Done.** Four techniques, all off by default, all measured together with what they cost:
+arid-node suppression, one-mutant-per-line, TCE dedup, and extreme mutation. Measured with
+`./gradlew :tools:bench:reduction`, which reports speed and detection loss side by side because
+a reduction figure without its loss figure is an advertisement rather than a result.
+
+Measured on the bench fixture (1080 mutants, 125 survivors):
+
+| technique | mutants | time | speedup | survivors | lost |
+|---|---|---|---|---|---|
+| baseline | 1080 | 19.1s | 1.00x | 125 | 0 |
+| dedup | 1080 | 19.1s | 1.00x | 125 | 0 |
+| arid | 1080 | 19.1s | 1.00x | 125 | 0 |
+| one-per-line | 520 | 9.9s | 1.92x | 82 | **43 (34%)** |
+| extreme mutation | 240 | 4.9s | 3.87x | 0 | n/a |
+
+Two findings worth more than the feature itself:
+
+- **TCE finds nothing on javac output with this mutator set, by construction.** It compares
+  compiled forms, so it can only catch a mutant whose bytecode is identical to the original's or
+  to another's. javac folds almost nothing, and no two of the ten default mutators can produce the
+  same instruction in the same place. The published "about 11% of Java mutants" figure was
+  measured with a larger set containing operators that overlap, so it does not transfer. The
+  filter is kept because it costs nothing when off and will matter where a compiler does fold --
+  Kotlin's does considerably more -- or with a user-supplied set containing redundant operators.
+- **One-per-line's real price is 34% of the findings.** It halves the mutant count and nearly
+  doubles the speed, and it stops reporting 43 of 125 genuine gaps. Google adopted it anyway,
+  which is defensible at their scale; stating the number is what lets anyone else decide.
+
+Extreme mutation found no survivors at all on this fixture, which is the pseudo-tested-method
+signal working: every method there is checked for doing *something*, and the finer mutators are
+what find the 125 gaps in *what* it does.
 
 **Goal.** Cut the mutant set without cutting usefulness — and quantify the tradeoff
 honestly.
@@ -616,6 +646,67 @@ and whose bytecode omits some instructions entirely.
 - Mutant dedup across call sites; source-location remapping.
 - Fixtures for each inline flavour; cost bound + explicit degradation reporting.
 - Three-way comparison.
+
+## M16b · Kotest, and other JUnit Platform engines
+
+**Not started.**
+
+**Goal.** Analyse projects whose tests are written in Kotest, with per-test selection, coverage
+and caching working exactly as they do for JUnit Jupiter.
+
+Kotest runs on the JUnit Platform, so discovery finds it already. That is not the same as
+supporting it. jzap executes one test at a time, addressed by unique id, and everything it does
+rests on that: per-test coverage, test selection, early exit, kill-test-first ordering, and the
+cache's notion of which test killed which mutant. A framework that cannot be driven a single test
+at a time degrades all of it silently rather than loudly, which is the failure mode to design
+against.
+
+**Definition of done.**
+
+- Kotest fixtures in the main spec styles — `StringSpec`, `FunSpec`, `DescribeSpec`,
+  `BehaviorSpec` — each with hand-written expected verdicts, analysed end to end.
+- **One leaf test runs, not the whole spec.** Asserted directly, by checking that a mutant covered
+  by one leaf is not reported as covered by its siblings. If `selectUniqueId` silently falls back
+  to running an entire spec, every mutant in the file appears covered by every test in it: the
+  score stays plausible, the selection collapses, and nothing fails.
+- All three isolation modes covered by fixtures — `SingleInstance` (the default),
+  `InstancePerTest`, `InstancePerLeaf` — producing identical verdicts. Isolation mode changes how
+  often a spec is instantiated, which is exactly the kind of per-test state the minion recycling
+  policy exists to bound.
+- **Unique ids are stable across runs.** Asserted by discovering twice and comparing. The cache
+  keys killing tests by unique id, so an id that varies between runs would silently disable reuse,
+  or worse, match the wrong test.
+- Coroutines: coverage probes and the runaway-loop guard work across suspension points and across
+  whatever threads Kotest dispatches onto. Both are static and global precisely so a test that
+  hops threads still records; there is a fixture that hops threads to prove it.
+- Project-level configuration (`AbstractProjectConfig`, `beforeProject`/`afterProject`) is
+  measured, not assumed. jzap runs the launcher once per test, so a hook that Kotest intends to
+  run once per engine execution may run once per test instead. Either it is cheap and harmless,
+  or the coverage phase needs a batched mode — the milestone decides which, with numbers.
+- Baseline duration and loop-iteration counts recorded per Kotest leaf, as for Jupiter.
+- A Kotest project and an equivalent Jupiter project over the same production code produce the
+  same verdicts. This is the real check: the framework should not be able to change what a mutant
+  means.
+- Supported Kotest versions documented, with a clear error rather than a crash on an unsupported
+  one.
+- `docs/status.md` states plainly which spec styles and isolation modes are covered.
+
+**Tasks.**
+
+- Kotest fixture module, one spec per style, plus an isolation-mode matrix.
+- Verify `selectUniqueId` selection against Kotest's engine; if it does not support single-leaf
+  selection, decide between a class-level fallback with documented coarser selection and a
+  `jzap-testkit` adapter that drives Kotest directly.
+- Thread-hopping and coroutine fixtures for the probe and guard.
+- Measure project-level hook cost per launcher execution; batch the coverage phase if it is not
+  negligible.
+- Cross-framework verdict comparison against an equivalent Jupiter project.
+- Version matrix in CI; version check with an actionable message.
+
+**Why it is its own milestone.** TestNG and JUnit 4 sit behind the same `jzap-testkit` SPI and
+raise the same question in a milder form. Kotest is the one that matters for a Kotlin-focused
+tool, and it is the one most likely to break the one-test-at-a-time assumption, so it gets the
+fixtures and the measurements rather than an assumption that the platform makes it work.
 
 ## M17 · Kotlin IR frontend (optional)
 
@@ -837,7 +928,7 @@ Recorded here rather than silently edited in, because the differences are the us
                           |                                   |
                           +--------------+--------------------+
                                          v
-                              M15 -> M16 -> M17 (optional)
+                        M15 -> M16 -> M16b -> M17 (optional)
                                          |
                                          v
                                    M18 -> M19 -> M20
@@ -849,5 +940,8 @@ Recorded here rather than silently edited in, because the differences are the us
   reporting touch the scope resolver and output layer rather than the execution engine.
 - M17 is optional and gated on Spike C's finding; if bytecode analysis proved
   insufficient for inline functions, it moves ahead of M16.
+- M16b (Kotest) depends on M15 only for realistic fixtures, not technically. If Kotest turns out
+  not to support single-leaf selection, it becomes a `jzap-testkit` change and can move earlier,
+  since that decision affects the SPI every other framework goes through.
 - M18 must not start before M11, because Gradle build-cache correctness depends on the
   determinism guarantees established in M10 and M11.

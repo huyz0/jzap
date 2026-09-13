@@ -47,7 +47,10 @@ final class ListMutantsCommand implements Callable<Integer> {
 
         MutationEngine engine = new MutationEngine(
                 Mutators.resolve(model.scope().mutators()),
-                model.scope().isFilterEnabled(io.github.huyz0.jzap.core.LoopCounterFilter.ID));
+                model.scope().isFilterEnabled(io.github.huyz0.jzap.core.LoopCounterFilter.ID),
+                model.scope().isOptionalFilterEnabled(io.github.huyz0.jzap.core.EquivalenceFilter.ID),
+                model.scope().isOptionalFilterEnabled(io.github.huyz0.jzap.core.AridFilter.ID),
+                model.scope().isOptionalFilterEnabled(io.github.huyz0.jzap.core.AnalysisEngine.ONE_PER_LINE));
         List<Mutant> mutants = new ArrayList<>();
         for (ModuleModel module : model.modules()) {
             List<ClassBytes> classes = new ClassScanner(
@@ -71,6 +74,15 @@ final class ListMutantsCommand implements Callable<Integer> {
             }
         }
         System.err.println("jzap: " + mutants.size() + " mutants in scope");
+        int dropped = engine.equivalentDropped() + engine.duplicateDropped()
+                + engine.aridDropped() + engine.onePerLineDropped();
+        if (dropped > 0 || !model.scope().enabledFilters().isEmpty()) {
+            System.err.println("jzap: filters dropped " + dropped + " mutant(s): "
+                    + engine.equivalentDropped() + " equivalent to the original, "
+                    + engine.duplicateDropped() + " duplicates, "
+                    + engine.aridDropped() + " in code that only reports, "
+                    + engine.onePerLineDropped() + " beyond one per line");
+        }
         return RunCommand.EXIT_OK;
     }
 

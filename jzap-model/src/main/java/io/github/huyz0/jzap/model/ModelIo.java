@@ -35,7 +35,7 @@ public final class ModelIo {
 
     private static final Set<String> KNOWN_SCOPE_FIELDS = Set.of(
             "kind", "from", "to", "granularity", "patchFile", "includeClasses",
-            "excludeClasses", "mutators", "disabledFilters");
+            "excludeClasses", "mutators", "disabledFilters", "enabledFilters");
 
     private final ObjectMapper mapper;
     private final List<String> warnings = new ArrayList<>();

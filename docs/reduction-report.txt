@@ -1,0 +1,26 @@
+==============================================================================
+Mutant reduction: what each technique removes, and what it costs
+==============================================================================
+
+technique           mutants  dropped    time  speedup  survivors   lost    loss
+-------------------------------------------------------------------------------
+baseline               1080        0  19.05s    1.00x        125      0    0.0%
+dedup                  1080        0  19.12s    1.00x        125      0    0.0%
+arid                   1080        0  19.07s    1.00x        125      0    0.0%
+one-per-line            520      560   9.91s    1.92x         82     43   34.4%
+all three               520      560  10.03s    1.90x         82     43   34.4%
+extreme mutation        240      840   4.92s    3.87x          0    125  100.0%
+
+survivors: gaps in the test suite the run reports.
+lost:      mutants that survived the full run and are no longer generated at
+           all. Each one is a real gap the reduced run will not report, which
+           is the price of the speedup in the column beside it.
+
+Extreme mutation is listed alongside these but is not the same kind of thing:
+it replaces the mutator set rather than filtering it, so its mutants are not a
+subset of the baseline's and its loss figure counts every baseline survivor.
+Read its mutant count and survivor count, not its loss.
+
+All reduction techniques are off by default. PIT does not do any of them, so
+enabling one turns every dropped mutant into a difference against the
+correctness oracle; see tools/parity.

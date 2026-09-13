@@ -49,11 +49,42 @@ final class ModelOptions {
             description = "Never mutate classes matching these globs.")
     List<String> exclude;
 
+    @Option(names = "--dedup",
+            description = "Drop mutants whose compiled form matches the original's, which can "
+                    + "never be killed, or another mutant's, which would share its verdict. "
+                    + "Off by default: PIT does not do this, so every dropped mutant becomes a "
+                    + "difference against the correctness oracle.")
+    boolean dedup;
+
+    @Option(names = "--arid",
+            description = "Drop mutants in code that reports rather than decides: logging calls, "
+                    + "and void methods whose calls are all logging. Off by default.")
+    boolean arid;
+
+    @Option(names = "--one-per-line",
+            description = "Keep at most one mutant per source line. Off by default.")
+    boolean onePerLine;
+
     @Option(names = "--mutate-loop-counters",
             description = "Also mutate loop counters. Off by default: negating a loop counter "
                     + "either hangs the test or crashes it immediately, so the mutant dies for "
                     + "a reason unrelated to what the test checks.")
     boolean mutateLoopCounters;
+
+    /** Filters that are off unless asked for, plus whatever the model already requested. */
+    private List<String> optionalFilters(Scope fromModel) {
+        List<String> filters = new java.util.ArrayList<>(fromModel.enabledFilters());
+        if (dedup) {
+            filters.add(io.github.huyz0.jzap.core.EquivalenceFilter.ID);
+        }
+        if (arid) {
+            filters.add(io.github.huyz0.jzap.core.AridFilter.ID);
+        }
+        if (onePerLine) {
+            filters.add(io.github.huyz0.jzap.core.AnalysisEngine.ONE_PER_LINE);
+        }
+        return List.copyOf(new java.util.LinkedHashSet<>(filters));
+    }
 
     ProjectModel read() {
         if (!Files.isRegularFile(modelFile)) {
@@ -86,6 +117,7 @@ final class ModelOptions {
                 mutators != null ? mutators : fromModel.mutators(),
                 mutateLoopCounters
                         ? List.of(io.github.huyz0.jzap.core.LoopCounterFilter.ID)
-                        : fromModel.disabledFilters());
+                        : fromModel.disabledFilters(),
+                optionalFilters(fromModel));
     }
 }

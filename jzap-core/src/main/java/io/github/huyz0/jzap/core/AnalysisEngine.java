@@ -43,6 +43,9 @@ public final class AnalysisEngine {
 
     public static final String ENGINE_ID = "naive";
 
+    /** Filter id for keeping at most one mutant per source line. */
+    public static final String ONE_PER_LINE = "ONE_PER_LINE";
+
     /** Progress reporting. Implementations must tolerate being called from any thread. */
     public interface Listener {
         void phase(String name, String detail);
@@ -116,6 +119,30 @@ public final class AnalysisEngine {
     }
 
     /**
+     * The filters actually in force, for the cache header.
+     *
+     * <p>Load-bearing rather than decorative: every filter changes the inventory, so a cache that
+     * ignored the set would serve verdicts for a different set of mutants.
+     */
+    private String effectiveFilters() {
+        List<String> active = new ArrayList<>();
+        if (model.scope().isFilterEnabled(LoopCounterFilter.ID)) {
+            active.add(LoopCounterFilter.ID);
+        }
+        if (model.scope().isOptionalFilterEnabled(EquivalenceFilter.ID)) {
+            active.add(EquivalenceFilter.ID);
+        }
+        if (model.scope().isOptionalFilterEnabled(AridFilter.ID)) {
+            active.add(AridFilter.ID);
+        }
+        if (model.scope().isOptionalFilterEnabled(ONE_PER_LINE)) {
+            active.add(ONE_PER_LINE);
+        }
+        active.sort(String::compareTo);
+        return String.join(",", active);
+    }
+
+    /**
      * Opens the incremental cache, if one was configured.
      *
      * <p>Opt-in rather than on by default. A cache whose whole question is whether reuse is
@@ -131,7 +158,7 @@ public final class AnalysisEngine {
                 EngineVersion.get(),
                 String.join(",", Mutators.resolve(model.scope().mutators()).stream()
                         .map(Mutator::id).sorted().toList()),
-                model.scope().isFilterEnabled(LoopCounterFilter.ID) ? LoopCounterFilter.ID : "",
+                effectiveFilters(),
                 config.toolchain() != null ? config.toolchain() : Hashes.toolchain()));
     }
 
@@ -162,7 +189,10 @@ public final class AnalysisEngine {
         private final MutantCache cache;
         private final MutationEngine mutation = new MutationEngine(
                 Mutators.resolve(model.scope().mutators()),
-                model.scope().isFilterEnabled(LoopCounterFilter.ID));
+                model.scope().isFilterEnabled(LoopCounterFilter.ID),
+                model.scope().isOptionalFilterEnabled(EquivalenceFilter.ID),
+                model.scope().isOptionalFilterEnabled(AridFilter.ID),
+                model.scope().isOptionalFilterEnabled(ONE_PER_LINE));
 
         /** Bytecode hash per mutated class, and per test class: the cache's invalidation inputs. */
         private final Map<String, String> classHashes = new LinkedHashMap<>();

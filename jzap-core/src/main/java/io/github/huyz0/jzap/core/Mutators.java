@@ -2,6 +2,7 @@ package io.github.huyz0.jzap.core;
 
 import io.github.huyz0.jzap.core.mutator.ConditionalsBoundaryMutator;
 import io.github.huyz0.jzap.core.mutator.EmptyReturnsMutator;
+import io.github.huyz0.jzap.core.mutator.ExtremeMutators;
 import io.github.huyz0.jzap.core.mutator.FalseReturnsMutator;
 import io.github.huyz0.jzap.core.mutator.IncrementsMutator;
 import io.github.huyz0.jzap.core.mutator.InvertNegsMutator;
@@ -25,6 +26,8 @@ import java.util.Map;
 public final class Mutators {
 
     private static final Map<String, Mutator> ALL = new LinkedHashMap<>();
+    private static final List<String> DEFAULT_IDS;
+    private static final List<String> EXTREME_IDS;
 
     static {
         register(new ConditionalsBoundaryMutator());
@@ -37,6 +40,17 @@ public final class Mutators {
         register(new FalseReturnsMutator());
         register(new TrueReturnsMutator());
         register(new PrimitiveReturnsMutator());
+        DEFAULT_IDS = List.copyOf(ALL.keySet());
+
+        // Registered but not in the default set: extreme mutation answers a different question
+        // from the fine-grained mutators, not a cheaper version of the same one.
+        ExtremeMutators.all().forEach(Mutators::register);
+        EXTREME_IDS = ExtremeMutators.all().stream().map(Mutator::id).toList();
+    }
+
+    /** The coarse operators: one mutant per method. Selected with {@code --mutators EXTREME}. */
+    public static List<String> extremeIds() {
+        return EXTREME_IDS;
     }
 
     private Mutators() {
@@ -47,11 +61,11 @@ public final class Mutators {
     }
 
     public static List<Mutator> defaults() {
-        return List.copyOf(ALL.values());
+        return DEFAULT_IDS.stream().map(Mutators::byId).toList();
     }
 
     public static List<String> defaultIds() {
-        return List.copyOf(ALL.keySet());
+        return DEFAULT_IDS;
     }
 
     public static Mutator byId(String id) {
@@ -63,11 +77,26 @@ public final class Mutators {
         return m;
     }
 
-    /** Resolves a requested set, falling back to the defaults when none is requested. */
+    /**
+     * Resolves a requested set, falling back to the defaults when none is requested.
+     *
+     * <p>{@code EXTREME} is a shorthand for the whole extreme-mutation set, because asking for
+     * its operators individually is never what anyone means.
+     */
     public static List<Mutator> resolve(List<String> ids) {
         if (ids == null || ids.isEmpty()) {
             return defaults();
         }
-        return ids.stream().map(Mutators::byId).toList();
+        List<Mutator> resolved = new java.util.ArrayList<>();
+        for (String id : ids) {
+            if (id.equalsIgnoreCase("EXTREME")) {
+                EXTREME_IDS.forEach(extreme -> resolved.add(byId(extreme)));
+            } else if (id.equalsIgnoreCase("DEFAULTS")) {
+                resolved.addAll(defaults());
+            } else {
+                resolved.add(byId(id));
+            }
+        }
+        return List.copyOf(resolved);
     }
 }

@@ -24,9 +24,18 @@ public final class MutationEngine {
 
     private final List<Mutator> mutators;
     private final boolean filterLoopCounters;
+    private final boolean dedup;
+    private final boolean arid;
+    private final boolean onePerLine;
+
+    /** Counts of what the equivalence filter dropped, for the reduction report. */
+    private int equivalentDropped;
+    private int duplicateDropped;
+    private int aridDropped;
+    private int onePerLineDropped;
 
     public MutationEngine(List<Mutator> mutators) {
-        this(mutators, true);
+        this(mutators, true, false, false, false);
     }
 
     /**
@@ -34,8 +43,43 @@ public final class MutationEngine {
      *                           see {@link LoopCounterFilter} for the measurements behind that.
      */
     public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters) {
+        this(mutators, filterLoopCounters, false, false, false);
+    }
+
+    public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters, boolean dedup) {
+        this(mutators, filterLoopCounters, dedup, false, false);
+    }
+
+    /**
+     * @param dedup      drop mutants whose compiled form matches the original's or another
+     *                   mutant's; see {@link EquivalenceFilter}
+     * @param arid       drop mutants in code that reports rather than decides; see
+     *                   {@link AridFilter}
+     * @param onePerLine keep at most one mutant per source line
+     */
+    public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters, boolean dedup,
+                          boolean arid, boolean onePerLine) {
         this.mutators = List.copyOf(mutators);
         this.filterLoopCounters = filterLoopCounters;
+        this.dedup = dedup;
+        this.arid = arid;
+        this.onePerLine = onePerLine;
+    }
+
+    public int equivalentDropped() {
+        return equivalentDropped;
+    }
+
+    public int duplicateDropped() {
+        return duplicateDropped;
+    }
+
+    public int aridDropped() {
+        return aridDropped;
+    }
+
+    public int onePerLineDropped() {
+        return onePerLineDropped;
     }
 
     public static MutationEngine withDefaults() {
@@ -62,9 +106,65 @@ public final class MutationEngine {
      * identically in both phases and {@link #apply} can still find any key discovery returned.
      */
     private List<Mutant> filter(List<Mutant> discovered, byte[] classBytes) {
-        if (!filterLoopCounters) {
+        // Order matters: cheap structural filters first, then the expensive one that has to
+        // generate bytecode for every surviving mutant.
+        List<Mutant> kept = filterLoopCounters
+                ? withoutLoopCounters(discovered, classBytes)
+                : discovered;
+        if (arid) {
+            kept = withoutAridCode(kept, classBytes);
+        }
+        if (onePerLine) {
+            kept = onePerLine(kept);
+        }
+        if (dedup) {
+            EquivalenceFilter.Result result = EquivalenceFilter.apply(this, classBytes, kept);
+            equivalentDropped += result.equivalent().size();
+            duplicateDropped += result.duplicates().size();
+            kept = result.kept();
+        }
+        return kept;
+    }
+
+    private List<Mutant> withoutAridCode(List<Mutant> discovered, byte[] classBytes) {
+        Set<AridFilter.Position> positions = AridFilter.aridPositions(classBytes);
+        if (positions.isEmpty()) {
             return discovered;
         }
+        List<Mutant> kept = new ArrayList<>(discovered.size());
+        for (Mutant m : discovered) {
+            if (AridFilter.drops(positions, m)) {
+                aridDropped++;
+            } else {
+                kept.add(m);
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * At most one mutant per source line.
+     *
+     * <p>Google's choice, and a defensible one: a reviewer reading a line with six mutants on it
+     * learns about as much as from one, and the other five cost a test run each. The survivor is
+     * the first in bytecode order, which is deterministic and therefore reproducible.
+     */
+    private List<Mutant> onePerLine(List<Mutant> discovered) {
+        Set<String> seen = new java.util.LinkedHashSet<>();
+        List<Mutant> kept = new ArrayList<>();
+        for (Mutant m : discovered) {
+            String line = m.key().className() + "#" + m.key().methodName()
+                    + m.key().descriptor() + ":" + m.key().line();
+            if (seen.add(line)) {
+                kept.add(m);
+            } else {
+                onePerLineDropped++;
+            }
+        }
+        return kept;
+    }
+
+    private List<Mutant> withoutLoopCounters(List<Mutant> discovered, byte[] classBytes) {
         Set<LoopCounterFilter.Position> suppressed = LoopCounterFilter.loopCounterPositions(classBytes);
         if (suppressed.isEmpty()) {
             return discovered;
@@ -81,7 +181,21 @@ public final class MutationEngine {
         return kept;
     }
 
+    /**
+     * Bytecode for one mutant without the runaway-loop guard.
+     *
+     * <p>Used for equivalence comparison, where the guard would be noise: it is identical in
+     * every mutant of a method and says nothing about whether two mutants are the same program.
+     */
+    byte[] applyWithoutGuards(byte[] classBytes, MutantKey key) {
+        return apply(classBytes, key, false);
+    }
+
     public byte[] apply(byte[] classBytes, MutantKey key) {
+        return apply(classBytes, key, true);
+    }
+
+    private byte[] apply(byte[] classBytes, MutantKey key, boolean guardLoops) {
         ClassReader reader = new ClassReader(classBytes);
         // COMPUTE_MAXS is sufficient: no mutator alters control flow, so the frames recorded
         // in the original class remain valid and only peak stack depth can change.
@@ -91,7 +205,7 @@ public final class MutationEngine {
         // bytecode another has already changed. That is what keeps ordinals stable between
         // discovery and application.
         List<Mutator> only = List.of(Mutators.byId(key.mutator()));
-        reader.accept(new MutatingClassVisitor(writer, ctx, only, true), ClassReader.EXPAND_FRAMES);
+        reader.accept(new MutatingClassVisitor(writer, ctx, only, guardLoops), ClassReader.EXPAND_FRAMES);
         if (!ctx.applied()) {
             throw new IllegalStateException("mutant " + key.asString()
                     + " does not match the supplied bytecode for " + key.className()

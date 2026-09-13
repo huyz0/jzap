@@ -38,6 +38,17 @@ version independent of the plugin's, declares its inputs and outputs so Gradle c
 is configuration-cache compatible. The conformance test asserts the model it writes drives the
 engine unaided, which is also how a user reproduces a plugin problem without Gradle in the loop.
 
+**Four mutant-reduction techniques**, all off by default and all measured with what they cost:
+`--arid` (logging and report-only methods), `--one-per-line`, `--dedup` (trivial compiler
+equivalence), and `--mutators EXTREME` (Descartes-style whole-body replacement). Off by default
+because PIT does none of them, so each dropped mutant would become a difference against the
+correctness oracle.
+
+`./gradlew :tools:bench:reduction` reports speed and **detection loss** together. On the bench
+fixture one-per-line halves the mutant count for a 1.9x speedup and stops reporting 43 of 125
+genuine gaps; TCE drops nothing at all on javac output, for a reason worth reading in
+[delivery-plan.md](delivery-plan.md).
+
 **An incremental cache**, opt-in with `--cache-dir` or `jzap { cacheDir = ... }`. It caches both
 verdicts and the per-test coverage map. A killed mutant's verdict is reused when its killing test
 still covers it and that test's class is unchanged; an unkilled mutant's only when the covering
@@ -163,14 +174,17 @@ differentially tested against.
 | Mutant schemata (compile once, all mutants as guarded branches) | M8b |
 | Warm daemon with in-JVM mutant switching and static-state reset | M9 |
 | Block-granularity coverage | M10 |
-| Arid-node suppression, one-per-line, TCE dedup, extreme mutation | M12 |
 | Kotlin junk-mutant handling and inline functions | M15, M16 |
+| Kotest support | M16b |
 | Maven plugin | M19 |
 | Multi-module single run with cross-module test selection | M20 |
 
-Also absent: parallelism (the engine is single-threaded), Tier B and Tier C corpora (parity
-runs against the hand-written fixture only), and the JUnit 4 and TestNG adapters behind the
-`jzap-testkit` SPI.
+Also absent: Tier C corpora (parity runs against the hand-written and generated fixtures only),
+and the JUnit 4, TestNG and Kotest adapters behind the `jzap-testkit` SPI. Kotest runs on the
+JUnit Platform so discovery would find it, but that is not the same as supporting it: everything
+jzap does rests on running one test at a time by unique id, and a framework that cannot be driven
+that way degrades selection silently rather than failing. M16b covers it with fixtures and
+measurements rather than an assumption.
 
 ## Known limitations of what does exist
 

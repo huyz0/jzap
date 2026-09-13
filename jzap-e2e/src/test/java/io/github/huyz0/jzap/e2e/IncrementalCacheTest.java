@@ -125,7 +125,7 @@ class IncrementalCacheTest {
 
         ProjectModel narrowed = model(cacheDir).withScope(new Scope(
                 io.github.huyz0.jzap.model.ScopeKind.ALL, null, null, "line", null,
-                List.of(), List.of(), List.of("MATH"), List.of()));
+                List.of(), List.of(), List.of("MATH"), List.of(), List.of()));
         AnalysisResult second = new AnalysisEngine(narrowed, AnalysisEngine.Listener.SILENT)
                 .analyse(null);
 
@@ -142,7 +142,7 @@ class IncrementalCacheTest {
         // filter set would be serving verdicts for a different set of mutants.
         ProjectModel unfiltered = model(cacheDir).withScope(new Scope(
                 io.github.huyz0.jzap.model.ScopeKind.ALL, null, null, "line", null,
-                List.of(), List.of(), List.of(), List.of("LOOP_COUNTER")));
+                List.of(), List.of(), List.of(), List.of("LOOP_COUNTER"), List.of()));
         AnalysisResult second = new AnalysisEngine(unfiltered, AnalysisEngine.Listener.SILENT)
                 .analyse(null);
 
@@ -231,7 +231,7 @@ class IncrementalCacheTest {
         // Record coverage for one class only, by scoping to it.
         ProjectModel narrow = model(cacheDir).withScope(new Scope(
                 io.github.huyz0.jzap.model.ScopeKind.ALL, null, null, "line", null,
-                List.of("sample.Discount"), List.of(), List.of(), List.of()));
+                List.of("sample.Discount"), List.of(), List.of(), List.of(), List.of()));
         new AnalysisEngine(narrow, AnalysisEngine.Listener.SILENT).analyse(null);
 
         AnalysisResult full = run(cacheDir);
