@@ -22,5 +22,6 @@ include(
 include("fixtures:sample-java")
 include("fixtures:bench-java")
 include("fixtures:hang-java")
+include("fixtures:kotlin-sample")
 include("tools:parity")
 include("tools:bench")

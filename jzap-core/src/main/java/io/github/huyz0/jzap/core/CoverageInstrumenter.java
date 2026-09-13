@@ -36,6 +36,18 @@ public final class CoverageInstrumenter {
         ClassReader reader = new ClassReader(classBytes);
         ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
         reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
+
+            private SourceMap sourceMap = SourceMap.EMPTY;
+
+            @Override
+            public void visitSource(String source, String debug) {
+                // The same translation the mutation engine applies, for the same reason: a probe
+                // has to be allocated against the line a mutant will be keyed at, or the two
+                // never meet.
+                sourceMap = SourceMap.parse(debug);
+                super.visitSource(source, debug);
+            }
+
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor,
                                              String signature, String[] exceptions) {
@@ -45,7 +57,8 @@ public final class CoverageInstrumenter {
                 }
                 // Back-edge counting rides along with coverage so the baseline iteration count
                 // is measured from the same run, on the same code, as everything else.
-                return new ProbeInsertingMethodVisitor(new BackEdgeInstrumenter(mv), binaryName, index);
+                return new ProbeInsertingMethodVisitor(new BackEdgeInstrumenter(mv), binaryName,
+                        name, descriptor, sourceMap, index);
             }
         }, ClassReader.EXPAND_FRAMES);
         return writer.toByteArray();
@@ -55,19 +68,27 @@ public final class CoverageInstrumenter {
     private static final class ProbeInsertingMethodVisitor extends MethodVisitor {
 
         private final String binaryName;
+        private final String methodName;
+        private final String descriptor;
+        private final SourceMap sourceMap;
         private final ProbeIndex index;
         private int pendingProbe = -1;
 
-        ProbeInsertingMethodVisitor(MethodVisitor next, String binaryName, ProbeIndex index) {
+        ProbeInsertingMethodVisitor(MethodVisitor next, String binaryName, String methodName,
+                                    String descriptor, SourceMap sourceMap, ProbeIndex index) {
             super(Opcodes.ASM9, next);
             this.binaryName = binaryName;
+            this.methodName = methodName;
+            this.descriptor = descriptor;
+            this.sourceMap = sourceMap;
             this.index = index;
         }
 
         @Override
         public void visitLineNumber(int line, Label start) {
             super.visitLineNumber(line, start);
-            pendingProbe = index.allocate(binaryName, line);
+            pendingProbe = index.allocate(binaryName, methodName, descriptor,
+                    sourceMap.toSourceLine(line));
         }
 
         /** Labels and frames mark positions, so a pending probe must not be flushed before them. */

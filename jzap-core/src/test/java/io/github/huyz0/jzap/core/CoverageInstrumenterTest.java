@@ -56,7 +56,7 @@ class CoverageInstrumenterTest {
 
         // The body spans the two statements of twice(), plus the implicit constructor line.
         assertTrue(index.size() >= 3, "expected a probe per line, got " + index.size());
-        assertEquals(-1, index.lookup("ex.Probed", 9999));
+        assertEquals(-1, index.lookup("ex.Probed", "twice", "(I)I", 9999));
     }
 
     private static List<String> staticCallsTo(byte[] classBytes, String owner, String name) {

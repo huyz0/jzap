@@ -36,6 +36,11 @@ public final class ConditionalsBoundaryMutator implements Mutator {
             Opcodes.IF_ICMPGT, "changed conditional boundary: > became >=",
             Opcodes.IF_ICMPLT, "changed conditional boundary: < became <=");
 
+    /** Whether this mutator seeds a mutant at this opcode, so filters can match its ordinals. */
+    public static boolean handles(int opcode) {
+        return REPLACEMENTS.containsKey(opcode);
+    }
+
     @Override
     public String id() {
         return ID;

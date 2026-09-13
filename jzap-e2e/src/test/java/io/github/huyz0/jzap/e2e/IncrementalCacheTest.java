@@ -72,7 +72,7 @@ class IncrementalCacheTest {
         List<String> lines = Files.readAllLines(cacheDir.resolve("jzap-cache.txt"),
                 StandardCharsets.UTF_8);
 
-        assertEquals("# jzap cache v1", lines.get(0));
+        assertEquals("# jzap cache v2", lines.get(0));
         assertTrue(lines.stream().anyMatch(l -> l.startsWith("toolchain=")),
                 "the toolchain must be recorded, or the cache could be reused under another");
         List<String> body = lines.subList(lines.indexOf("---") + 1, lines.size());

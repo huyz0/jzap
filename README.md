@@ -100,6 +100,10 @@ jzap-cli      the command line
 jzap-gradle   the Gradle adapter: source sets and toolchains in, project model out
 ```
 
+Kotlin is analysed the same way, with the compiler's own scaffolding filtered out and inline
+function bodies mutated through their call sites — reported against the inline function's source,
+not the synthetic line numbers kotlinc gives the copies.
+
 ## Verifying it against PIT
 
 PIT is jzap's correctness oracle, and the comparison is wired into the build rather than done

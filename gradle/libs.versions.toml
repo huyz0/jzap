@@ -8,6 +8,10 @@ picocli = "4.7.7"
 pitest = "1.30.0"
 pitestJunit5 = "1.2.3"
 slf4j = "2.0.17"
+kotlin = "2.4.0"
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 
 [libraries]
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }

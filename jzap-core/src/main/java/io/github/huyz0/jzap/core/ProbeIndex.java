@@ -4,22 +4,30 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Assigns a probe id to each (class, line) pair.
+ * Assigns a probe id to each (class, method, line) triple.
  *
- * <p>Ids are allocated in the order classes are instrumented, and {@link ClassScanner}
- * returns classes in sorted order, so the mapping is reproducible across runs.
+ * <p>Method-scoped rather than class-scoped because one source line can compile into several
+ * methods. Kotlin's inline functions make this unavoidable: the body of an inline function exists
+ * once at its declaration and once inside every caller, all reporting the same source line after
+ * translation. Keyed by line alone they share a probe, and a test that only exercises a call site
+ * makes the unreachable declaration look covered. Lambdas in Java raise the same question more
+ * quietly.
+ *
+ * <p>Ids are allocated in the order classes are instrumented, and {@link ClassScanner} returns
+ * classes in sorted order, so the mapping is reproducible across runs.
  */
 public final class ProbeIndex {
 
     private final Map<String, Integer> ids = new LinkedHashMap<>();
     private final Map<Integer, String> locations = new LinkedHashMap<>();
 
-    private static String key(String className, int line) {
-        return className + ':' + line;
+    /** The location key a mutant and its probe must agree on. */
+    public static String key(String className, String methodName, String descriptor, int line) {
+        return className + '#' + methodName + descriptor + ':' + line;
     }
 
-    int allocate(String className, int line) {
-        return ids.computeIfAbsent(key(className, line), k -> {
+    int allocate(String className, String methodName, String descriptor, int line) {
+        return ids.computeIfAbsent(key(className, methodName, descriptor, line), k -> {
             int id = ids.size();
             locations.put(id, k);
             return id;
@@ -31,9 +39,9 @@ public final class ProbeIndex {
         return locations.get(probeId);
     }
 
-    /** Probe id for a line, or -1 if that line was never instrumented. */
-    public int lookup(String className, int line) {
-        return ids.getOrDefault(key(className, line), -1);
+    /** Probe id for a location, or -1 if it was never instrumented. */
+    public int lookup(String className, String methodName, String descriptor, int line) {
+        return ids.getOrDefault(key(className, methodName, descriptor, line), -1);
     }
 
     public int size() {

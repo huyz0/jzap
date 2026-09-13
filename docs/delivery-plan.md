@@ -590,7 +590,26 @@ the junk-mutant taxonomy are the measures.
 
 ## M15 · Kotlin junk-mutant handling
 
-**Not started.**
+**Done.** A Kotlin fixture, a junk taxonomy derived from reading the bytecode kotlinc actually
+emits, and filters for each entry -- all gated on the class carrying `kotlin.Metadata`, so Java
+classes and the PIT comparison are untouched. Switchable with `--mutate-kotlin-internals`.
+
+The rules, each traced to a specific construct in the compiled output:
+
+- **Generated property accessors.** `val id: String` has no getter body to get wrong.
+- **Data class members.** `componentN`, `copy`, `copy$default`, and `equals`/`hashCode`/
+  `toString` on a class that has `componentN` methods.
+- **Null-check intrinsics.** Removing a `kotlin.jvm.internal.Intrinsics` call is not a mistake
+  anyone can make.
+- **For-each loop scaffolding.** `for (x in xs)` compiles to an `Iterator.hasNext` check.
+  Negating it makes the loop skip everything or never end, which is the same uninformative
+  outcome as mutating a loop counter in Java -- and the Java loop-counter filter cannot see it,
+  because a Kotlin for-each loop has no increment.
+
+Worth recording: the intrinsics and most data-class members were **already** being dropped, but
+by accident -- they sit before the first line-number entry, and mutants with no line were being
+filtered for having nowhere to point. A rule that states the intent stops that from regressing
+silently the day something gives them a line.
 
 **Goal.** Do not generate junk mutants from compiler-generated constructs, rather than
 filtering them after the fact.
@@ -621,7 +640,30 @@ filtering them after the fact.
 
 ## M16 · Kotlin inline functions
 
-**Not started.**
+**Done, and it needed a coverage change nobody had planned for.**
+
+kotlinc emits a real method at the declaration *and* copies the body into every Kotlin call site,
+under synthetic line numbers past the end of the file -- one distinct range per call site. So the
+same source line exists in the compiled output three times over in the fixture, and none of the
+three behaved correctly:
+
+- Mutants in the inlined copies pointed at source lines that do not exist. Fixed by parsing the
+  `SourceDebugExtension` attribute, the JSR-045 SMAP table, and translating each synthetic line
+  back to the line it was copied from. Only the first stratum is read: the `KotlinDebug` stratum
+  that follows maps the same output lines to the *call sites*, which is what a debugger wants and
+  the opposite of what a report wants.
+- After translation, an inlined copy and its declaration reported the same class and line, so
+  they shared a coverage probe. A test exercising a call site made the unreachable declaration
+  look covered. Fixed by keying coverage on **(class, method, line)** rather than (class, line) --
+  which is a real improvement for Java too, where lambdas raise the same question more quietly.
+- The declaration's own method now correctly reports NO_COVERAGE: Kotlin callers inline the body,
+  so the emitted method never runs. That is the honest verdict, and it is what arcmutate documents
+  as the reason bytecode mutation of inline functions is hard.
+
+jzap does **not** deduplicate the copies across call sites, where arcmutate does. Two call sites
+are genuinely two pieces of compiled code and a test may kill one and not the other; with the line
+numbers now correct, reporting both is more information rather than noise. The description says
+which are inlined copies so a reader knows why the same line appears twice.
 
 **Goal.** Correct mutants for inline functions, whose bodies are copied into every caller
 and whose bytecode omits some instructions entirely.

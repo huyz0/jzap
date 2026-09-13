@@ -28,6 +28,10 @@ final class Fixture {
         return new Fixture("jzap.hang.descriptor", ":fixtures:hang-java");
     }
 
+    static Fixture kotlin() {
+        return new Fixture("jzap.kotlin.descriptor", ":fixtures:kotlin-sample");
+    }
+
     private final String moduleId;
 
     private Fixture(String property, String moduleId) {
@@ -50,6 +54,38 @@ final class Fixture {
 
     Path projectRoot() {
         return Path.of(properties.getProperty("projectRoot"));
+    }
+
+    /**
+     * The 1-based line number of the first source line containing {@code needle}.
+     *
+     * <p>Tests derive line numbers this way rather than hard-coding them, because a fixture's
+     * comments get edited and a test that then fails is reporting on the comment, not the code.
+     */
+    int lineContaining(String relativePath, String needle) {
+        Path file = Path.of(properties.getProperty("sourceRoot")).resolve(relativePath);
+        try {
+            List<String> lines = Files.readAllLines(file);
+            for (int i = 0; i < lines.size(); i++) {
+                if (lines.get(i).contains(needle)) {
+                    return i + 1;
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot read fixture source " + file, e);
+        }
+        throw new IllegalArgumentException("no line containing '" + needle + "' in " + file);
+    }
+
+    /** Number of test methods declared in the fixture's test sources. */
+    int declaredTestCount(Path testSourceFile) {
+        try {
+            return (int) Files.readAllLines(testSourceFile).stream()
+                    .filter(line -> line.trim().equals("@Test"))
+                    .count();
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot read " + testSourceFile, e);
+        }
     }
 
     ProjectModel model(Scope scope) {

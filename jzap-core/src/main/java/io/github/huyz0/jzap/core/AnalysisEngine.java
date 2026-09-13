@@ -129,6 +129,9 @@ public final class AnalysisEngine {
         if (model.scope().isFilterEnabled(LoopCounterFilter.ID)) {
             active.add(LoopCounterFilter.ID);
         }
+        if (model.scope().isFilterEnabled(KotlinFilter.ID)) {
+            active.add(KotlinFilter.ID);
+        }
         if (model.scope().isOptionalFilterEnabled(EquivalenceFilter.ID)) {
             active.add(EquivalenceFilter.ID);
         }
@@ -192,7 +195,8 @@ public final class AnalysisEngine {
                 model.scope().isFilterEnabled(LoopCounterFilter.ID),
                 model.scope().isOptionalFilterEnabled(EquivalenceFilter.ID),
                 model.scope().isOptionalFilterEnabled(AridFilter.ID),
-                model.scope().isOptionalFilterEnabled(ONE_PER_LINE));
+                model.scope().isOptionalFilterEnabled(ONE_PER_LINE),
+                model.scope().isFilterEnabled(KotlinFilter.ID));
 
         /** Bytecode hash per mutated class, and per test class: the cache's invalidation inputs. */
         private final Map<String, String> classHashes = new LinkedHashMap<>();
@@ -622,8 +626,9 @@ public final class AnalysisEngine {
          * overwhelmingly likely to kill it again.
          */
         List<String> selectFor(Mutant mutant) {
-            Set<String> tests = testsByLocation.get(
-                    mutant.key().className() + ":" + mutant.key().line());
+            Set<String> tests = testsByLocation.get(ProbeIndex.key(
+                    mutant.key().className(), mutant.key().methodName(),
+                    mutant.key().descriptor(), mutant.key().line()));
             if (tests == null) {
                 return List.of();
             }

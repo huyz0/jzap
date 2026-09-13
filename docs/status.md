@@ -38,6 +38,16 @@ version independent of the plugin's, declares its inputs and outputs so Gradle c
 is configuration-cache compatible. The conformance test asserts the model it writes drives the
 engine unaided, which is also how a user reproduces a plugin problem without Gradle in the loop.
 
+**Kotlin.** Analysed end to end, with the constructs kotlinc generates filtered out rather than
+reported as junk: property accessors, data class members, null-check intrinsics, and for-each loop
+scaffolding. Every rule is gated on `kotlin.Metadata`, so Java classes behave exactly as before.
+
+**Kotlin inline functions.** Their bodies are mutated through the inlined copies at each call
+site, reported against the inline function's own source line by parsing the `SourceDebugExtension`
+SMAP table, and the emitted declaration correctly reports no coverage because Kotlin callers never
+execute it. Coverage is keyed by (class, method, line) so a call site and the declaration cannot
+share a probe.
+
 **Four mutant-reduction techniques**, all off by default and all measured with what they cost:
 `--arid` (logging and report-only methods), `--one-per-line`, `--dedup` (trivial compiler
 equivalence), and `--mutators EXTREME` (Descartes-style whole-body replacement). Off by default
@@ -174,7 +184,6 @@ differentially tested against.
 | Mutant schemata (compile once, all mutants as guarded branches) | M8b |
 | Warm daemon with in-JVM mutant switching and static-state reset | M9 |
 | Block-granularity coverage | M10 |
-| Kotlin junk-mutant handling and inline functions | M15, M16 |
 | Kotest support | M16b |
 | Maven plugin | M19 |
 | Multi-module single run with cross-module test selection | M20 |

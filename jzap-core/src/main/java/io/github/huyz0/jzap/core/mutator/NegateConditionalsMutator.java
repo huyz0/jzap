@@ -41,6 +41,11 @@ public final class NegateConditionalsMutator implements Mutator {
         pair(Opcodes.IFNONNULL, Opcodes.IFNULL, "negated conditional: != null became == null");
     }
 
+    /** Whether this mutator seeds a mutant at this opcode, so filters can match its ordinals. */
+    public static boolean handles(int opcode) {
+        return REPLACEMENTS.containsKey(opcode);
+    }
+
     @Override
     public String id() {
         return ID;

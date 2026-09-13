@@ -65,11 +65,29 @@ final class ModelOptions {
             description = "Keep at most one mutant per source line. Off by default.")
     boolean onePerLine;
 
+    @Option(names = "--mutate-kotlin-internals",
+            description = "Also mutate constructs the Kotlin compiler generated: property "
+                    + "accessors, data class members, null-check intrinsics and for-each loop "
+                    + "scaffolding. Off by default, because no developer mistake produces them.")
+    boolean mutateKotlinInternals;
+
     @Option(names = "--mutate-loop-counters",
             description = "Also mutate loop counters. Off by default: negating a loop counter "
                     + "either hangs the test or crashes it immediately, so the mutant dies for "
                     + "a reason unrelated to what the test checks.")
     boolean mutateLoopCounters;
+
+    /** Default-on filters the user asked to switch off, plus whatever the model already listed. */
+    private List<String> disabledFilters(Scope fromModel) {
+        List<String> filters = new java.util.ArrayList<>(fromModel.disabledFilters());
+        if (mutateLoopCounters) {
+            filters.add(io.github.huyz0.jzap.core.LoopCounterFilter.ID);
+        }
+        if (mutateKotlinInternals) {
+            filters.add(io.github.huyz0.jzap.core.KotlinFilter.ID);
+        }
+        return List.copyOf(new java.util.LinkedHashSet<>(filters));
+    }
 
     /** Filters that are off unless asked for, plus whatever the model already requested. */
     private List<String> optionalFilters(Scope fromModel) {
@@ -115,9 +133,7 @@ final class ModelOptions {
                 include != null ? include : fromModel.includeClasses(),
                 exclude != null ? exclude : fromModel.excludeClasses(),
                 mutators != null ? mutators : fromModel.mutators(),
-                mutateLoopCounters
-                        ? List.of(io.github.huyz0.jzap.core.LoopCounterFilter.ID)
-                        : fromModel.disabledFilters(),
+                disabledFilters(fromModel),
                 optionalFilters(fromModel));
     }
 }

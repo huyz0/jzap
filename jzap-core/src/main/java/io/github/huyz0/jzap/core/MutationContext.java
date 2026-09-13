@@ -27,6 +27,8 @@ public final class MutationContext {
     private final MutantKey target;
 
     private String sourceFile;
+    private SourceMap sourceMap = SourceMap.EMPTY;
+    private boolean lineIsInlined;
     private String methodName = "";
     private String descriptor = "";
     private int line;
@@ -53,6 +55,17 @@ public final class MutationContext {
         this.sourceFile = sourceFile;
     }
 
+    /**
+     * The class's line-number translation table, if it has one.
+     *
+     * <p>Kotlin gives inlined code synthetic line numbers past the end of the file. Translating
+     * them here, rather than in the reporters, means the mutant key itself carries the real line
+     * — and the key is what the cache, the parity harness and every report agree on.
+     */
+    public void sourceMap(SourceMap sourceMap) {
+        this.sourceMap = sourceMap == null ? SourceMap.EMPTY : sourceMap;
+    }
+
     /** Called when entering a method. Ordinals reset here, so keys survive unrelated edits. */
     public void enterMethod(String name, String desc) {
         this.methodName = name;
@@ -62,7 +75,8 @@ public final class MutationContext {
     }
 
     public void line(int line) {
-        this.line = line;
+        this.lineIsInlined = sourceMap.isInlined(line);
+        this.line = sourceMap.toSourceLine(line);
     }
 
     public int line() {
@@ -93,7 +107,13 @@ public final class MutationContext {
         int ordinal = ordinals.merge(bucket, 0, (a, b) -> a + 1);
         MutantKey key = new MutantKey(className, methodName, descriptor, line, mutatorId, ordinal);
         if (mode == Mode.COLLECT) {
-            collected.add(Mutant.discovered(key, moduleId, sourceFile, description));
+            // Saying so matters: the same source line appears once per call site, and a reader
+            // seeing it twice should know why rather than suspect the report.
+            String annotated = lineIsInlined
+                    ? description + " (in an inlined copy of this code)"
+                    : description;
+            String file = sourceMap.toSourceFile(line).orElse(sourceFile);
+            collected.add(Mutant.discovered(key, moduleId, file, annotated));
             return false;
         }
         if (key.equals(target)) {

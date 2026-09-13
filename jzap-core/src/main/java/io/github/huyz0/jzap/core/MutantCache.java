@@ -69,7 +69,7 @@ import java.util.TreeMap;
  */
 public final class MutantCache {
 
-    private static final String FORMAT = "jzap cache v1";
+    private static final String FORMAT = "jzap cache v2";
     private static final String SEPARATOR = "---";
 
     /** What a previous run recorded about one mutant. */
@@ -106,7 +106,7 @@ public final class MutantCache {
      *
      * @param key             hash over every scanned class and test class
      * @param classesCovered  classes the map has entries for; a narrower run records fewer
-     * @param testsByLocation {@code class:line} to the tests that execute it
+     * @param testsByLocation {@code class#methoddescriptor:line} to the tests that execute it
      * @param durations       test id to its baseline duration, the wall-clock backstop's input
      * @param loopIterations  test id to the loop iterations it needed unmutated, which the
      *                        runaway-loop limit is derived from

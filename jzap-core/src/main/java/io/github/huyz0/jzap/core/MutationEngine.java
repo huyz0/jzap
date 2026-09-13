@@ -27,15 +27,17 @@ public final class MutationEngine {
     private final boolean dedup;
     private final boolean arid;
     private final boolean onePerLine;
+    private final boolean kotlinFilters;
 
     /** Counts of what the equivalence filter dropped, for the reduction report. */
     private int equivalentDropped;
     private int duplicateDropped;
     private int aridDropped;
     private int onePerLineDropped;
+    private int kotlinJunkDropped;
 
     public MutationEngine(List<Mutator> mutators) {
-        this(mutators, true, false, false, false);
+        this(mutators, true, false, false, false, true);
     }
 
     /**
@@ -43,11 +45,16 @@ public final class MutationEngine {
      *                           see {@link LoopCounterFilter} for the measurements behind that.
      */
     public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters) {
-        this(mutators, filterLoopCounters, false, false, false);
+        this(mutators, filterLoopCounters, false, false, false, true);
     }
 
     public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters, boolean dedup) {
-        this(mutators, filterLoopCounters, dedup, false, false);
+        this(mutators, filterLoopCounters, dedup, false, false, true);
+    }
+
+    public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters, boolean dedup,
+                          boolean arid, boolean onePerLine) {
+        this(mutators, filterLoopCounters, dedup, arid, onePerLine, true);
     }
 
     /**
@@ -56,14 +63,21 @@ public final class MutationEngine {
      * @param arid       drop mutants in code that reports rather than decides; see
      *                   {@link AridFilter}
      * @param onePerLine keep at most one mutant per source line
+     * @param kotlinFilters drop mutants in constructs the Kotlin compiler generated. On by
+     *                   default, and inert for classes javac produced; see {@link KotlinFilter}
      */
     public MutationEngine(List<Mutator> mutators, boolean filterLoopCounters, boolean dedup,
-                          boolean arid, boolean onePerLine) {
+                          boolean arid, boolean onePerLine, boolean kotlinFilters) {
         this.mutators = List.copyOf(mutators);
         this.filterLoopCounters = filterLoopCounters;
         this.dedup = dedup;
         this.arid = arid;
         this.onePerLine = onePerLine;
+        this.kotlinFilters = kotlinFilters;
+    }
+
+    public int kotlinJunkDropped() {
+        return kotlinJunkDropped;
     }
 
     public int equivalentDropped() {
@@ -111,6 +125,9 @@ public final class MutationEngine {
         List<Mutant> kept = filterLoopCounters
                 ? withoutLoopCounters(discovered, classBytes)
                 : discovered;
+        if (kotlinFilters) {
+            kept = withoutKotlinJunk(kept, classBytes);
+        }
         if (arid) {
             kept = withoutAridCode(kept, classBytes);
         }
@@ -122,6 +139,22 @@ public final class MutationEngine {
             equivalentDropped += result.equivalent().size();
             duplicateDropped += result.duplicates().size();
             kept = result.kept();
+        }
+        return kept;
+    }
+
+    private List<Mutant> withoutKotlinJunk(List<Mutant> discovered, byte[] classBytes) {
+        Set<KotlinFilter.Position> positions = KotlinFilter.junkPositions(classBytes);
+        if (positions.isEmpty()) {
+            return discovered;
+        }
+        List<Mutant> kept = new ArrayList<>(discovered.size());
+        for (Mutant m : discovered) {
+            if (KotlinFilter.drops(positions, m)) {
+                kotlinJunkDropped++;
+            } else {
+                kept.add(m);
+            }
         }
         return kept;
     }
@@ -237,6 +270,7 @@ public final class MutationEngine {
         @Override
         public void visitSource(String source, String debug) {
             ctx.sourceFile(source);
+            ctx.sourceMap(SourceMap.parse(debug));
             super.visitSource(source, debug);
         }
 

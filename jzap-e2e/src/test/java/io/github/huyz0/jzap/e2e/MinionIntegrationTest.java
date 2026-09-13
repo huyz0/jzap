@@ -80,10 +80,11 @@ class MinionIntegrationTest {
             List<String> tests = minion.listTests(module.testClassPaths());
             for (String test : tests) {
                 for (int probe : minion.runTestForCoverage(test, 60_000).probeIds()) {
-                    for (int line = 1; line < 100; line++) {
-                        if (index.lookup("sample.Discount", line) == probe) {
-                            sawDiscountLine = true;
-                        }
+                    // Probes are keyed by class, method and line, so the location string is
+                    // matched rather than reconstructed from a guessed method signature.
+                    String location = index.locationOf(probe);
+                    if (location != null && location.startsWith("sample.Discount#")) {
+                        sawDiscountLine = true;
                     }
                 }
             }
