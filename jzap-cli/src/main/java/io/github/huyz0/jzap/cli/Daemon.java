@@ -2,6 +2,8 @@ package io.github.huyz0.jzap.cli;
 
 import io.github.huyz0.jzap.wire.Channel;
 
+import picocli.CommandLine;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -14,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -94,22 +97,16 @@ final class Daemon {
     private static boolean handle(Channel channel, PrintStream log) throws IOException {
         int request = channel.readByte();
         if (request == REQUEST_STOP) {
-            channel.writeInt(0);
-            channel.writeString("stopped");
-            channel.flush();
+            respond(channel, RunCommand.EXIT_OK, "stopped");
             log.println("jzap daemon stopping on request");
             return false;
         }
         if (request == REQUEST_PING) {
-            channel.writeInt(0);
-            channel.writeString("alive");
-            channel.flush();
+            respond(channel, RunCommand.EXIT_OK, "alive");
             return true;
         }
         if (request != REQUEST_RUN) {
-            channel.writeInt(2);
-            channel.writeString("unknown request " + request);
-            channel.flush();
+            respond(channel, RunCommand.EXIT_USAGE, "unknown request " + request);
             return true;
         }
 
@@ -129,30 +126,34 @@ final class Daemon {
         try {
             System.setOut(sink);
             System.setErr(sink);
-            exit = new picocli.CommandLine(new JzapCommand()).execute(args.toArray(new String[0]));
+            exit = new CommandLine(new JzapCommand()).execute(args.toArray(new String[0]));
         } finally {
             System.setOut(outWas);
             System.setErr(errWas);
         }
-        channel.writeInt(exit);
-        channel.writeString(captured.toString(StandardCharsets.UTF_8));
-        channel.flush();
+        respond(channel, exit, captured.toString(StandardCharsets.UTF_8));
         return true;
+    }
+
+    private static void respond(Channel channel, int exitCode, String output) {
+        channel.writeInt(exitCode);
+        channel.writeString(output);
+        channel.flush();
     }
 
     // ------------------------------------------------------------------ client
 
     /** @return the daemon's response, or empty when no daemon is running for this model */
-    static java.util.Optional<Response> send(Path modelFile, byte request, List<String> args) {
+    static Optional<Response> send(Path modelFile, byte request, List<String> args) {
         Path portFile = portFile(modelFile);
         if (!Files.isRegularFile(portFile)) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
         int port;
         try {
             port = Integer.parseInt(Files.readString(portFile, StandardCharsets.UTF_8).trim());
         } catch (IOException | NumberFormatException e) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
         try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), port);
              Channel channel = new Channel(socket)) {
@@ -165,7 +166,7 @@ final class Daemon {
                 }
             }
             channel.flush();
-            return java.util.Optional.of(new Response(channel.readInt(), channel.readString()));
+            return Optional.of(new Response(channel.readInt(), channel.readString()));
         } catch (IOException e) {
             // A stale port file from a daemon that is gone. Cleaning it up here means the next
             // invocation starts a fresh one instead of failing the same way again.
@@ -174,19 +175,19 @@ final class Daemon {
             } catch (IOException ignored) {
                 // nothing useful to do; the next run will try again
             }
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
     }
 
-    static java.util.Optional<Response> run(Path modelFile, List<String> args) {
+    static Optional<Response> run(Path modelFile, List<String> args) {
         return send(modelFile, REQUEST_RUN, args);
     }
 
-    static java.util.Optional<Response> stop(Path modelFile) {
+    static Optional<Response> stop(Path modelFile) {
         return send(modelFile, REQUEST_STOP, List.of());
     }
 
-    static java.util.Optional<Response> ping(Path modelFile) {
+    static Optional<Response> ping(Path modelFile) {
         return send(modelFile, REQUEST_PING, List.of());
     }
 

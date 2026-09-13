@@ -12,10 +12,11 @@ import java.util.Map;
  * Shared state for one class visit: where we are in the bytecode, and whether the mutator
  * asking should actually apply its change.
  *
- * <p>Two modes. In {@code COLLECT} every registration is recorded and nothing is applied. In
- * {@code APPLY} exactly one mutation is applied, and the visitor chain contains only the
- * mutator that owns the target key — so no mutator ever observes bytecode another mutator
- * has already altered, which is what keeps ordinals identical between the two modes.
+ * <p>Three modes, listed on {@link Mode}. In {@code COLLECT} every registration is recorded and
+ * nothing is applied. In {@code APPLY} exactly one mutation is applied, and the visitor chain
+ * contains only the mutator that owns the target key — so no mutator ever observes bytecode
+ * another mutator has already altered, which is what keeps ordinals identical across modes.
+ * {@code SCHEMATA} compiles every mutant in at once.
  */
 public final class MutationContext {
 
@@ -72,10 +73,6 @@ public final class MutationContext {
         return ctx;
     }
 
-    public boolean isSchemata() {
-        return mode == Mode.SCHEMATA;
-    }
-
     public void sourceFile(String sourceFile) {
         this.sourceFile = sourceFile;
     }
@@ -121,13 +118,6 @@ public final class MutationContext {
     }
 
     /**
-     * Registers a mutation point and reports whether to apply it.
-     *
-     * @param mutatorId   the asking mutator's id
-     * @param description human-readable, source-faithful description of the change
-     * @return true only in APPLY mode, and only for the one targeted mutant
-     */
-    /**
      * Assigns this mutation point its key, in the one place that does so.
      *
      * <p>Every mode goes through here, so a key means the same thing whether it was discovered,
@@ -149,9 +139,15 @@ public final class MutationContext {
         return schemataIndices.getOrDefault(key, -1);
     }
 
+    /**
+     * Registers a mutation point and reports whether to apply it.
+     *
+     * @param mutatorId   the asking mutator's id
+     * @param description human-readable, source-faithful description of the change
+     * @return true only in APPLY mode, and only for the one targeted mutant
+     */
     public boolean shouldMutate(String mutatorId, String description) {
         MutantKey key = register(mutatorId);
-        int ordinal = key.ordinal();
         if (mode == Mode.COLLECT) {
             // Saying so matters: the same source line appears once per call site, and a reader
             // seeing it twice should know why rather than suspect the report.
@@ -175,9 +171,5 @@ public final class MutationContext {
 
     public boolean applied() {
         return applied;
-    }
-
-    public MutantKey target() {
-        return target;
     }
 }

@@ -12,6 +12,7 @@ import io.github.huyz0.jzap.core.mutator.PrimitiveReturnsMutator;
 import io.github.huyz0.jzap.core.mutator.TrueReturnsMutator;
 import io.github.huyz0.jzap.core.mutator.VoidMethodCallsMutator;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -87,7 +88,7 @@ public final class Mutators {
         if (ids == null || ids.isEmpty()) {
             return defaults();
         }
-        List<Mutator> resolved = new java.util.ArrayList<>();
+        List<Mutator> resolved = new ArrayList<>();
         for (String id : ids) {
             if (id.equalsIgnoreCase("EXTREME")) {
                 EXTREME_IDS.forEach(extreme -> resolved.add(byId(extreme)));

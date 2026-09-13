@@ -9,6 +9,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 
 /**
  * One annotation per surviving mutant, for posting as pull-request review comments.
@@ -44,7 +45,7 @@ public final class AnnotationsJsonReporter implements Reporter {
         json.startObject();
         json.key("tool").value("jzap");
         json.key("level").value(level);
-        json.key("summary").value(String.format(java.util.Locale.ROOT,
+        json.key("summary").value(String.format(Locale.ROOT,
                 "%d of %d mutants survived; mutation score %.1f%%",
                 result.count(MutantStatus.SURVIVED), result.mutants().size(), result.mutationScore()));
         json.key("annotations").startArray();

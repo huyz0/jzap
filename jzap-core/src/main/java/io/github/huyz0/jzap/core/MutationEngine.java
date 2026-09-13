@@ -3,10 +3,10 @@ package io.github.huyz0.jzap.core;
 import io.github.huyz0.jzap.core.mutator.IncrementsMutator;
 import io.github.huyz0.jzap.model.Mutant;
 import io.github.huyz0.jzap.model.MutantKey;
+
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
@@ -245,24 +245,7 @@ public final class MutationEngine {
             for (int i = mutators.size() - 1; i >= 0; i--) {
                 chain = mutators.get(i).visit(ctx, chain);
             }
-            return new LineTrackingMethodVisitor(ctx, chain);
-        }
-    }
-
-    /** Keeps {@link MutationContext#line()} current for the mutators downstream. */
-    static final class LineTrackingMethodVisitor extends MethodVisitor {
-
-        private final MutationContext ctx;
-
-        LineTrackingMethodVisitor(MutationContext ctx, MethodVisitor next) {
-            super(Opcodes.ASM9, next);
-            this.ctx = ctx;
-        }
-
-        @Override
-        public void visitLineNumber(int line, Label start) {
-            ctx.line(line);
-            super.visitLineNumber(line, start);
+            return new LineNumberTracker(ctx, chain);
         }
     }
 }

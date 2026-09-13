@@ -4,6 +4,7 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Classpath;
@@ -18,6 +19,7 @@ import org.gradle.api.tasks.TaskAction;
 import org.gradle.process.ExecOperations;
 
 import javax.inject.Inject;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -26,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Writes a project model and runs the engine against it.
@@ -153,11 +156,11 @@ public abstract class JzapTask extends DefaultTask {
     protected abstract ExecOperations getExecOperations();
 
     @Inject
-    protected abstract org.gradle.api.model.ObjectFactory getObjects();
+    protected abstract ObjectFactory getObjects();
 
     @TaskAction
     public void analyse() {
-        java.util.Set<File> engine = getEngineClasspath().getFiles();
+        Set<File> engine = getEngineClasspath().getFiles();
         if (engine.isEmpty()) {
             throw new GradleException("""
                     No jzap engine on the classpath.
@@ -201,9 +204,8 @@ public abstract class JzapTask extends DefaultTask {
             arguments.add("--fail-on-survivors");
         }
 
-        java.util.Set<File> engineClasspath = engine;
         var result = getExecOperations().javaexec(spec -> {
-            spec.setClasspath(getObjects().fileCollection().from(engineClasspath));
+            spec.setClasspath(getObjects().fileCollection().from(engine));
             spec.getMainClass().set("io.github.huyz0.jzap.cli.Main");
             spec.setArgs(arguments);
             if (getJavaExecutable().isPresent()) {

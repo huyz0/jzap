@@ -2,12 +2,13 @@ package io.github.huyz0.jzap.minion;
 
 import io.github.huyz0.jzap.agent.ClassOverrides;
 import io.github.huyz0.jzap.agent.CoverageRecorder;
+import io.github.huyz0.jzap.agent.JzapAgent;
 import io.github.huyz0.jzap.agent.LoopGuard;
 import io.github.huyz0.jzap.agent.MutantSwitch;
-import io.github.huyz0.jzap.agent.JzapAgent;
 import io.github.huyz0.jzap.wire.Channel;
 import io.github.huyz0.jzap.wire.Wire;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -53,7 +54,7 @@ public final class Minion {
             int command;
             try {
                 command = channel.readByte();
-            } catch (java.io.EOFException e) {
+            } catch (EOFException e) {
                 return;     // controller went away; nothing to report
             }
             switch (command) {
@@ -63,7 +64,6 @@ public final class Minion {
                 case Wire.CMD_RUN_TEST_COVERAGE -> runTestForCoverage(channel);
                 case Wire.CMD_SET_OVERRIDE -> setOverride(channel);
                 case Wire.CMD_CLEAR_OVERRIDES -> clearOverrides(channel);
-                case Wire.CMD_ACTIVATE_MUTANT -> activateMutant(channel);
                 case Wire.CMD_RUN_TESTS -> runTests(channel);
                 case Wire.CMD_EXIT -> {
                     return;
@@ -90,11 +90,7 @@ public final class Minion {
     }
 
     private void listTests(Channel channel) throws IOException {
-        int rootCount = channel.readInt();
-        List<Path> roots = new ArrayList<>(rootCount);
-        for (int i = 0; i < rootCount; i++) {
-            roots.add(Path.of(channel.readString()));
-        }
+        List<Path> roots = readClassPaths(channel);
         try {
             harness = new TestHarness(roots);
             List<String> tests = harness.discover();
@@ -116,17 +112,22 @@ public final class Minion {
      * and not a test plan. Discovering one anyway cost a fifth of a second per analysis JVM.
      */
     private void prepareTests(Channel channel) throws IOException {
-        int rootCount = channel.readInt();
-        List<Path> roots = new ArrayList<>(rootCount);
-        for (int i = 0; i < rootCount; i++) {
-            roots.add(Path.of(channel.readString()));
-        }
+        List<Path> roots = readClassPaths(channel);
         try {
             harness = new TestHarness(roots);
             respondOk(channel);
         } catch (RuntimeException | LinkageError e) {
             error(channel, "cannot prepare the test harness: " + describe(e));
         }
+    }
+
+    private static List<Path> readClassPaths(Channel channel) throws IOException {
+        int rootCount = channel.readInt();
+        List<Path> roots = new ArrayList<>(rootCount);
+        for (int i = 0; i < rootCount; i++) {
+            roots.add(Path.of(channel.readString()));
+        }
+        return roots;
     }
 
     private void runTestForCoverage(Channel channel) throws IOException {
@@ -136,7 +137,7 @@ public final class Minion {
         // Counting without a limit: this run is establishing what the unmutated code needs.
         LoopGuard.arm(0);
         long start = System.nanoTime();
-        TestHarness.Outcome outcome = harness.run(List.of(testId), false);
+        TestHarness.Outcome outcome = harness.run(List.of(testId));
         long millis = (System.nanoTime() - start) / 1_000_000L;
         long ticks = LoopGuard.ticks();
         LoopGuard.disarm();
@@ -171,11 +172,6 @@ public final class Minion {
         respondOk(channel);
     }
 
-    private void activateMutant(Channel channel) throws IOException {
-        MutantSwitch.activate(channel.readInt());
-        respondOk(channel);
-    }
-
     private void runTests(Channel channel) throws IOException {
         int count = channel.readInt();
         long iterationLimit = channel.readLong();
@@ -191,33 +187,41 @@ public final class Minion {
         MutantSwitch.activate(mutantIndex);
         LoopGuard.arm(iterationLimit);
         try {
-            outcome = harness.run(tests, true);
+            outcome = harness.run(tests);
         } finally {
             LoopGuard.disarm();
             MutantSwitch.deactivate();
         }
 
-        byte code;
-        if (outcome.runaway()) {
-            code = Wire.OUTCOME_RUNAWAY;
-        } else if (outcome.nonViable()) {
-            code = Wire.OUTCOME_NON_VIABLE;
-        } else if (outcome.passed()) {
-            code = Wire.OUTCOME_ALL_PASSED;
-        } else {
-            code = Wire.OUTCOME_FAILED;
-        }
         channel.writeByte(Wire.RESP_OK);
-        channel.writeByte(code);
+        channel.writeByte(outcomeCode(outcome));
         channel.writeString(outcome.failingTest() == null ? "" : outcome.failingTest());
         channel.writeString(outcome.failureMessage() == null ? "" : outcome.failureMessage());
         channel.writeInt(outcome.testsRun());
         channel.flush();
     }
 
+    /**
+     * How a run came out, most specific cause first.
+     *
+     * <p>A runaway mutant also fails its tests, and a non-viable one fails them too, so the order
+     * is what makes the distinction: reporting either as a plain failure would put a mutant the
+     * tests never really judged in the killed column.
+     */
+    private static byte outcomeCode(TestHarness.Outcome outcome) {
+        if (outcome.runaway()) {
+            return Wire.OUTCOME_RUNAWAY;
+        }
+        if (outcome.nonViable()) {
+            return Wire.OUTCOME_NON_VIABLE;
+        }
+        return outcome.passed() ? Wire.OUTCOME_ALL_PASSED : Wire.OUTCOME_FAILED;
+    }
+
     private void requireHarness() {
         if (harness == null) {
-            throw new IllegalStateException("LIST_TESTS must be sent before running tests");
+            throw new IllegalStateException(
+                    "LIST_TESTS or PREPARE_TESTS must be sent before running tests");
         }
         if (!JzapAgent.isLoaded()) {
             throw new IllegalStateException("jzap agent is not loaded in the minion JVM");

@@ -1,5 +1,7 @@
 package io.github.huyz0.jzap.report;
 
+import java.util.Locale;
+
 /** Minimal JSON writing, so the report module stays free of a serialisation dependency. */
 final class Json {
 
@@ -61,7 +63,7 @@ final class Json {
     }
 
     Json value(double v) {
-        sb.append(String.format(java.util.Locale.ROOT, "%.4f", v));
+        sb.append(String.format(Locale.ROOT, "%.4f", v));
         needsComma = true;
         return this;
     }

@@ -107,7 +107,7 @@ final class TestHarness {
      * rarely triggers at a price always paid. The verdict is unchanged either way: a mutant is
      * killed if any covering test fails.
      */
-    Outcome run(List<String> testIds, boolean stopOnFirstFailure) {
+    Outcome run(List<String> testIds) {
         if (testIds.isEmpty()) {
             return new Outcome(true, null, 0, false, null, false);
         }

@@ -5,6 +5,7 @@ import io.github.huyz0.jzap.wire.Channel;
 import io.github.huyz0.jzap.wire.Wire;
 import io.github.huyz0.jzap.wire.WireException;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A forked analysis JVM, from the controller's side.
@@ -26,6 +28,21 @@ import java.util.List;
  * tidiness one.
  */
 public final class MinionProcess implements AutoCloseable {
+
+    /** How long to wait for a minion to connect back before giving up on it. */
+    private static final int CONNECT_TIMEOUT_MILLIS = 60_000;
+
+    /** Discovering a large suite is the slowest thing a minion is ever asked to do. */
+    private static final int DISCOVERY_TIMEOUT_MILLIS = 300_000;
+
+    /** Installing classes: bounded work, but proportional to how many are in scope. */
+    private static final int INSTALL_TIMEOUT_MILLIS = 120_000;
+
+    /** A bookkeeping round trip that does no user work, so it should answer immediately. */
+    private static final int CONTROL_TIMEOUT_MILLIS = 30_000;
+
+    /** How long a minion gets to exit on request before it is killed. */
+    private static final int EXIT_GRACE_SECONDS = 5;
 
     /** Thrown when a mutant hangs the analysis JVM. The process must then be destroyed. */
     public static final class HungException extends RuntimeException {
@@ -62,7 +79,7 @@ public final class MinionProcess implements AutoCloseable {
 
     public static MinionProcess start(ModuleModel module, RuntimeJars.Jars jars) {
         try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            server.setSoTimeout(60_000);
+            server.setSoTimeout(CONNECT_TIMEOUT_MILLIS);
             List<String> command = buildCommand(module, jars, server.getLocalPort());
             ProcessBuilder builder = new ProcessBuilder(command);
             builder.redirectErrorStream(true);
@@ -72,7 +89,8 @@ public final class MinionProcess implements AutoCloseable {
                 socket = server.accept();
             } catch (SocketTimeoutException e) {
                 process.destroyForcibly();
-                throw new WireException("the analysis JVM did not connect within 60s. Command was:\n  "
+                throw new WireException("the analysis JVM did not connect within "
+                        + CONNECT_TIMEOUT_MILLIS / 1000 + "s. Command was:\n  "
                         + String.join(" ", command), e);
             }
             return new MinionProcess(process, new Channel(socket));
@@ -97,14 +115,14 @@ public final class MinionProcess implements AutoCloseable {
         classpath.add(jars.wire().toString());
         classpath.add(jars.agent().toString());
         classpath.addAll(module.testClasspath());
-        command.add(String.join(java.io.File.pathSeparator, classpath));
+        command.add(String.join(File.pathSeparator, classpath));
         command.add("io.github.huyz0.jzap.minion.Minion");
         command.add(Integer.toString(port));
         return command;
     }
 
     public void initCoverage(int probeCount, List<ClassBytes> instrumented) {
-        channel.readTimeout(120_000);
+        channel.readTimeout(INSTALL_TIMEOUT_MILLIS);
         channel.writeByte(Wire.CMD_INIT_COVERAGE);
         channel.writeInt(probeCount);
         channel.writeInt(instrumented.size());
@@ -117,13 +135,8 @@ public final class MinionProcess implements AutoCloseable {
     }
 
     public List<String> listTests(List<String> testClassPaths) {
-        channel.readTimeout(300_000);
-        channel.writeByte(Wire.CMD_LIST_TESTS);
-        channel.writeInt(testClassPaths.size());
-        for (String root : testClassPaths) {
-            channel.writeString(root);
-        }
-        channel.flush();
+        channel.readTimeout(DISCOVERY_TIMEOUT_MILLIS);
+        sendClassPaths(Wire.CMD_LIST_TESTS, testClassPaths);
         expectOk("discovering tests");
         try {
             int n = channel.readInt();
@@ -144,14 +157,18 @@ public final class MinionProcess implements AutoCloseable {
      * fifth of a second each and produced a list nothing read.
      */
     public void prepareTests(List<String> testClassPaths) {
-        channel.readTimeout(120_000);
-        channel.writeByte(Wire.CMD_PREPARE_TESTS);
+        channel.readTimeout(INSTALL_TIMEOUT_MILLIS);
+        sendClassPaths(Wire.CMD_PREPARE_TESTS, testClassPaths);
+        expectOk("preparing the test harness");
+    }
+
+    private void sendClassPaths(byte command, List<String> testClassPaths) {
+        channel.writeByte(command);
         channel.writeInt(testClassPaths.size());
         for (String root : testClassPaths) {
             channel.writeString(root);
         }
         channel.flush();
-        expectOk("preparing the test harness");
     }
 
     public TestCoverage runTestForCoverage(String testId, int timeoutMillis) {
@@ -180,7 +197,7 @@ public final class MinionProcess implements AutoCloseable {
     }
 
     public void setOverride(String className, byte[] bytes) {
-        channel.readTimeout(30_000);
+        channel.readTimeout(CONTROL_TIMEOUT_MILLIS);
         channel.writeByte(Wire.CMD_SET_OVERRIDE);
         channel.writeString(className);
         channel.writeBytes(bytes);
@@ -188,21 +205,8 @@ public final class MinionProcess implements AutoCloseable {
         expectOk("installing a mutant in " + className);
     }
 
-    /**
-     * Selects which mutant of an installed schemata class is active.
-     *
-     * <p>{@link io.github.huyz0.jzap.agent.MutantSwitch#NONE} restores the original behaviour.
-     */
-    public void activateMutant(int index) {
-        channel.readTimeout(30_000);
-        channel.writeByte(Wire.CMD_ACTIVATE_MUTANT);
-        channel.writeInt(index);
-        channel.flush();
-        expectOk("activating mutant " + index);
-    }
-
     public void clearOverrides() {
-        channel.readTimeout(30_000);
+        channel.readTimeout(CONTROL_TIMEOUT_MILLIS);
         channel.writeByte(Wire.CMD_CLEAR_OVERRIDES);
         channel.flush();
         expectOk("clearing mutants");
@@ -298,19 +302,17 @@ public final class MinionProcess implements AutoCloseable {
         return !dead && process.isAlive();
     }
 
+    /** Asks the minion to exit, then makes sure it has. */
     @Override
     public void close() {
-        dead = true;
         try {
             channel.writeByte(Wire.CMD_EXIT);
             channel.flush();
-            process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            process.waitFor(EXIT_GRACE_SECONDS, TimeUnit.SECONDS);
         } catch (Exception ignored) {
-            // a minion that will not exit cleanly gets destroyed below
+            // a minion that will not exit cleanly is destroyed below like any other
         }
-        channel.close();
-        process.destroyForcibly();
-        drain.interrupt();
+        destroy();
     }
 
     /** Kills the process immediately. The only reliable way to stop a mutant that hangs. */

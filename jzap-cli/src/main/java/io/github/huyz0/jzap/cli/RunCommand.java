@@ -122,7 +122,7 @@ final class RunCommand implements Callable<Integer> {
         }
 
         List<String> reporterIds = reporters != null ? reporters : model.reporters();
-        ReportContext context = new ReportContext(reportDir, sourceRoots(model), null, 80, 60);
+        ReportContext context = ReportContext.of(reportDir, sourceRoots(model));
         new Reporters(System.out).resolve(reporterIds)
                 .forEach(reporter -> reporter.write(result, context));
 

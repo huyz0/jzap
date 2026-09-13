@@ -5,6 +5,7 @@ import io.github.huyz0.jzap.model.Mutant;
 import io.github.huyz0.jzap.model.MutantStatus;
 
 import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +53,7 @@ public final class ConsoleReporter implements Reporter {
             out.println("Surviving mutants (" + survivors.size() + "):");
             Map<String, List<Mutant>> byFile = new LinkedHashMap<>();
             for (Mutant m : survivors) {
-                byFile.computeIfAbsent(SourceLocator.relativePath(m), k -> new java.util.ArrayList<>()).add(m);
+                byFile.computeIfAbsent(SourceLocator.relativePath(m), k -> new ArrayList<>()).add(m);
             }
             byFile.forEach((file, mutants) -> {
                 out.println("  " + file);

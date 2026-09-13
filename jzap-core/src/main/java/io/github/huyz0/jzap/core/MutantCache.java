@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * Reuses verdicts from a previous run, when it can be shown that nothing relevant changed.
@@ -72,16 +73,18 @@ public final class MutantCache {
     private static final String FORMAT = "jzap cache v2";
     private static final String SEPARATOR = "---";
 
-    /** What a previous run recorded about one mutant. */
+    /** What a previous run recorded about one mutant, one tab-separated line in the file. */
     private record Entry(
             MutantStatus status,
             String classHash,
             String killingTest,
             String killingTestHash,
             String coveringFingerprint,
-            int coveringTests,
-            int testsRun) {
+            int coveringTests) {
     }
+
+    /** Fields in a mutant entry line, counting the key: what tells one from a section line. */
+    private static final int ENTRY_FIELDS = 7;
 
     /** Everything about a run that invalidates every entry at once. */
     public record Header(
@@ -145,84 +148,108 @@ public final class MutantCache {
         }
         try {
             List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
-            if (lines.isEmpty() || !lines.get(0).equals("# " + FORMAT)) {
-                cache.discardReason = "unrecognised cache format";
+            String rejection = checkHeader(lines, header);
+            if (rejection != null) {
+                cache.discardReason = rejection;
                 return cache;
             }
-            int separator = lines.indexOf(SEPARATOR);
-            if (separator < 0) {
-                cache.discardReason = "truncated cache file";
-                return cache;
-            }
-            List<String> found = lines.subList(1, separator);
-            List<String> expected = header.lines();
-            if (!found.equals(expected)) {
-                cache.discardReason = describeMismatch(expected, found);
-                return cache;
-            }
-            String coverageKey = null;
-            Set<String> coveredClasses = new LinkedHashSet<>();
-            Map<String, Set<String>> testsByLocation = new LinkedHashMap<>();
-            Map<String, Long> durations = new LinkedHashMap<>();
-            Map<String, Long> iterations = new LinkedHashMap<>();
-            Map<String, String> testModules = new LinkedHashMap<>();
-            List<String> failing = new ArrayList<>();
-
-            for (String line : lines.subList(separator + 1, lines.size())) {
-                if (line.isBlank()) {
-                    continue;
-                }
-                String[] parts = line.split("\t", -1);
-                if (parts[0].equals("coverage-key") && parts.length == 3) {
-                    coverageKey = parts[1];
-                    for (String name : parts[2].split(",")) {
-                        if (!name.isEmpty()) {
-                            coveredClasses.add(name);
-                        }
-                    }
-                    continue;
-                }
-                if (parts[0].equals("coverage") && parts.length == 3) {
-                    testsByLocation.computeIfAbsent(parts[1], k -> new LinkedHashSet<>())
-                            .add(parts[2]);
-                    continue;
-                }
-                if (parts[0].equals("test-duration") && parts.length == 3) {
-                    durations.put(parts[1], Long.parseLong(parts[2]));
-                    continue;
-                }
-                if (parts[0].equals("test-iterations") && parts.length == 3) {
-                    iterations.put(parts[1], Long.parseLong(parts[2]));
-                    continue;
-                }
-                if (parts[0].equals("test-module") && parts.length == 3) {
-                    testModules.put(parts[1], parts[2]);
-                    continue;
-                }
-                if (parts[0].equals("failing-test") && parts.length == 2) {
-                    failing.add(parts[1]);
-                    continue;
-                }
-                if (parts.length != 7) {
-                    cache.discardReason = "malformed cache entry: " + line;
-                    cache.reusable.clear();
-                    return cache;
-                }
-                cache.reusable.put(parts[0], new Entry(
-                        MutantStatus.valueOf(parts[1]), parts[2],
-                        parts[3].isEmpty() ? null : parts[3],
-                        parts[4].isEmpty() ? null : parts[4],
-                        parts[5], Integer.parseInt(parts[6]), 0));
-            }
-            if (coverageKey != null) {
-                cache.storedCoverage = new CachedCoverage(coverageKey, coveredClasses,
-                        testsByLocation, durations, iterations, testModules, failing);
-            }
+            cache.readBody(lines.subList(lines.indexOf(SEPARATOR) + 1, lines.size()));
         } catch (IOException | IllegalArgumentException e) {
             cache.discardReason = "could not read the cache: " + e.getMessage();
             cache.reusable.clear();
         }
         return cache;
+    }
+
+    /** Why the file cannot be used at all, or null if its header matches this run. */
+    private static String checkHeader(List<String> lines, Header header) {
+        if (lines.isEmpty() || !lines.get(0).equals("# " + FORMAT)) {
+            return "unrecognised cache format";
+        }
+        int separator = lines.indexOf(SEPARATOR);
+        if (separator < 0) {
+            return "truncated cache file";
+        }
+        List<String> found = lines.subList(1, separator);
+        List<String> expected = header.lines();
+        return found.equals(expected) ? null : describeMismatch(expected, found);
+    }
+
+    /**
+     * Reads the sections below the separator.
+     *
+     * <p>Line kind is the first tab-separated field, except for a mutant entry, which starts with
+     * the mutant key itself and is recognised by its field count. A malformed line discards
+     * everything: a cache half-read is a cache whose misses cannot be told from its absences.
+     */
+    private void readBody(List<String> lines) {
+        String coverageKey = null;
+        Set<String> coveredClasses = new LinkedHashSet<>();
+        Map<String, Set<String>> testsByLocation = new LinkedHashMap<>();
+        Map<String, Long> durations = new LinkedHashMap<>();
+        Map<String, Long> iterations = new LinkedHashMap<>();
+        Map<String, String> testModules = new LinkedHashMap<>();
+        List<String> failing = new ArrayList<>();
+
+        for (String line : lines) {
+            if (line.isBlank()) {
+                continue;
+            }
+            String[] parts = line.split("\t", -1);
+            if (parts.length == 3) {
+                switch (parts[0]) {
+                    case "coverage-key" -> {
+                        coverageKey = parts[1];
+                        for (String name : parts[2].split(",")) {
+                            if (!name.isEmpty()) {
+                                coveredClasses.add(name);
+                            }
+                        }
+                        continue;
+                    }
+                    case "coverage" -> {
+                        testsByLocation.computeIfAbsent(parts[1], k -> new LinkedHashSet<>())
+                                .add(parts[2]);
+                        continue;
+                    }
+                    case "test-duration" -> {
+                        durations.put(parts[1], Long.parseLong(parts[2]));
+                        continue;
+                    }
+                    case "test-iterations" -> {
+                        iterations.put(parts[1], Long.parseLong(parts[2]));
+                        continue;
+                    }
+                    case "test-module" -> {
+                        testModules.put(parts[1], parts[2]);
+                        continue;
+                    }
+                    default -> { }
+                }
+            }
+            if (parts.length == 2 && parts[0].equals("failing-test")) {
+                failing.add(parts[1]);
+                continue;
+            }
+            if (parts.length != ENTRY_FIELDS) {
+                discardReason = "malformed cache entry: " + line;
+                reusable.clear();
+                return;
+            }
+            reusable.put(parts[0], new Entry(
+                    MutantStatus.valueOf(parts[1]), parts[2],
+                    emptyToNull(parts[3]),
+                    emptyToNull(parts[4]),
+                    parts[5], Integer.parseInt(parts[6])));
+        }
+        if (coverageKey != null) {
+            storedCoverage = new CachedCoverage(coverageKey, coveredClasses,
+                    testsByLocation, durations, iterations, testModules, failing);
+        }
+    }
+
+    private static String emptyToNull(String field) {
+        return field.isEmpty() ? null : field;
     }
 
     private static String describeMismatch(List<String> expected, List<String> found) {
@@ -239,10 +266,6 @@ public final class MutantCache {
     /** Why a previous cache was not used, or null if there was nothing to discard. */
     public Optional<String> discardReason() {
         return Optional.ofNullable(discardReason);
-    }
-
-    public int reusableCount() {
-        return reusable.size();
     }
 
     /**
@@ -322,7 +345,7 @@ public final class MutantCache {
         entries.put(analysed.key().asString(), new Entry(
                 analysed.status(), classHash, killingTest, killingTestHash,
                 fingerprint(coveringTests, testClassHashes),
-                analysed.coveringTests(), analysed.testsRun()));
+                analysed.coveringTests()));
     }
 
     /**
@@ -348,34 +371,31 @@ public final class MutantCache {
 
         CachedCoverage coverage = recordedCoverage != null ? recordedCoverage : storedCoverage;
         if (coverage != null) {
-            text.append(String.join("\t", "coverage-key", coverage.key(),
-                    String.join(",", new java.util.TreeSet<>(coverage.classesCovered())))).append('\n');
+            line(text, "coverage-key", coverage.key(),
+                    String.join(",", new TreeSet<>(coverage.classesCovered())));
             // One line per (location, test) rather than a packed list. A JUnit unique id can
             // contain almost any character, so there is no separator that is both safe and
             // readable; more lines is the better trade in a file people are meant to read.
             new TreeMap<>(coverage.testsByLocation()).forEach((location, tests) ->
-                    new java.util.TreeSet<>(tests).forEach(test ->
-                            text.append(String.join("\t", "coverage", location, test))
-                                    .append('\n')));
+                    new TreeSet<>(tests).forEach(test ->
+                            line(text, "coverage", location, test)));
             new TreeMap<>(coverage.durations()).forEach((test, millis) ->
-                    text.append(String.join("\t", "test-duration", test,
-                            Long.toString(millis))).append('\n'));
+                    line(text, "test-duration", test, Long.toString(millis)));
             new TreeMap<>(coverage.loopIterations()).forEach((test, ticks) ->
-                    text.append(String.join("\t", "test-iterations", test,
-                            Long.toString(ticks))).append('\n'));
+                    line(text, "test-iterations", test, Long.toString(ticks)));
             new TreeMap<>(coverage.testModules()).forEach((test, module) ->
-                    text.append(String.join("\t", "test-module", test, module)).append('\n'));
+                    line(text, "test-module", test, module));
             coverage.failingTests().stream().sorted().forEach(test ->
-                    text.append(String.join("\t", "failing-test", test)).append('\n'));
+                    line(text, "failing-test", test));
         }
-        new TreeMap<>(entries).forEach((key, entry) -> text.append(String.join("\t",
+        new TreeMap<>(entries).forEach((key, entry) -> line(text,
                 key,
                 entry.status().name(),
                 entry.classHash(),
-                entry.killingTest() == null ? "" : entry.killingTest(),
-                entry.killingTestHash() == null ? "" : entry.killingTestHash(),
+                nullToEmpty(entry.killingTest()),
+                nullToEmpty(entry.killingTestHash()),
                 entry.coveringFingerprint(),
-                Integer.toString(entry.coveringTests()))).append('\n'));
+                Integer.toString(entry.coveringTests())));
         try {
             if (file.getParent() != null) {
                 Files.createDirectories(file.getParent());
@@ -384,6 +404,14 @@ public final class MutantCache {
         } catch (IOException e) {
             throw new UncheckedIOException("cannot write the jzap cache to " + file, e);
         }
+    }
+
+    private static void line(StringBuilder text, String... fields) {
+        text.append(String.join("\t", fields)).append('\n');
+    }
+
+    private static String nullToEmpty(String field) {
+        return field == null ? "" : field;
     }
 
     /** Identity of the covering set: which tests, and what their classes currently contain. */

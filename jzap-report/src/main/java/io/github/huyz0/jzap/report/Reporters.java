@@ -19,10 +19,6 @@ public final class Reporters {
         registry.put("annotations", AnnotationsJsonReporter::new);
     }
 
-    public List<String> known() {
-        return List.copyOf(registry.keySet());
-    }
-
     public Reporter byId(String id) {
         Supplier<Reporter> found = registry.get(id);
         if (found == null) {

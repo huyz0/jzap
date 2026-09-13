@@ -11,6 +11,7 @@ import io.github.huyz0.jzap.core.mutator.PrimitiveReturnsMutator;
 import io.github.huyz0.jzap.core.mutator.TrueReturnsMutator;
 import io.github.huyz0.jzap.model.Mutant;
 import io.github.huyz0.jzap.model.MutantKey;
+
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
@@ -19,6 +20,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,7 +83,7 @@ public final class SchemataTransformer {
     /** Builds the schemata class for the mutants discovered in it. */
     public static Result transform(byte[] classBytes, List<Mutant> mutants) {
         Map<MutantKey, Integer> indices = new LinkedHashMap<>();
-        List<Mutant> fallbacks = new java.util.ArrayList<>();
+        List<Mutant> fallbacks = new ArrayList<>();
         int next = 0;
         for (Mutant mutant : mutants) {
             if (supports(mutant.key().mutator())) {
@@ -122,7 +124,7 @@ public final class SchemataTransformer {
                 // a schemata class is what the mutated code actually runs as, so without it a
                 // runaway mutant falls through to the wall-clock backstop and the verdict stops
                 // being deterministic.
-                return new LineTracker(ctx, new SchemataMethodVisitor(
+                return new LineNumberTracker(ctx, new SchemataMethodVisitor(
                         ctx, descriptor, new BackEdgeInstrumenter(writerVisitor)));
             }
         }, ClassReader.EXPAND_FRAMES);
@@ -130,22 +132,6 @@ public final class SchemataTransformer {
     }
 
     /** Keeps the context's line current, exactly as the mutating pass does. */
-    private static final class LineTracker extends MethodVisitor {
-
-        private final MutationContext ctx;
-
-        LineTracker(MutationContext ctx, MethodVisitor next) {
-            super(Opcodes.ASM9, next);
-            this.ctx = ctx;
-        }
-
-        @Override
-        public void visitLineNumber(int line, Label start) {
-            ctx.line(line);
-            super.visitLineNumber(line, start);
-        }
-    }
-
     /**
      * Rewrites each mutable operation into a dispatch call.
      *
