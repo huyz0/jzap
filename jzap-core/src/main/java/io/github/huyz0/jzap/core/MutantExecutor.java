@@ -142,23 +142,15 @@ final class MutantExecutor {
      * already paid for. Once the per-mutant cost fell to about 1.5 ms, twenty workers on a
      * two-second job measured *slower* than one: 4.06s against 3.20s, because the run was mostly
      * twenty JVM startups.
-     *
-     * <p>So the cap is the work itself. One extra worker per {@code WORK_PER_WORKER_MILLIS} of
-     * estimated work, which is roughly twice what starting one costs, and never more workers than
-     * there are classes to give them.
      */
     private int workersFor(List<Mutant> covered, Map<MutantKey, List<String>> selections,
                            Coverage coverage, int classCount) {
-        int requested = Math.max(1, Math.min(model.threads(), classCount));
-        if (requested == 1) {
-            return 1;
-        }
         long estimatedMillis = 0;
         for (Mutant mutant : covered) {
             estimatedMillis += estimatedCostMillis(selections.get(mutant.key()), coverage);
         }
-        int justified = (int) Math.max(1, estimatedMillis / WORK_PER_WORKER_MILLIS);
-        int workers = Math.min(requested, justified);
+        int requested = Math.max(1, Math.min(model.threads(), classCount));
+        int workers = workerCountFor(requested, estimatedMillis);
         if (workers < requested) {
             listener.phase("execution", "using " + workers + " of " + requested
                     + " requested thread(s): about " + estimatedMillis + "ms of work does not "
@@ -166,6 +158,32 @@ final class MutantExecutor {
                     + JVM_STARTUP_MILLIS + "ms each to start cold");
         }
         return workers;
+    }
+
+    /**
+     * The worker count this much work justifies, capped at what was asked for.
+     *
+     * <p>One extra worker per {@code WORK_PER_WORKER_MILLIS} of estimated work, which is roughly
+     * twice what starting one costs. Separated from the estimating so the rule itself can be
+     * checked at scales no fixture reaches: the sample fixture is a few tens of milliseconds of
+     * work, so it never justifies a second worker, and a test that asked for eight threads there
+     * would be asserting on a single-threaded run.
+     *
+     * @param requested       threads asked for, already capped at the number of classes -- work is
+     *                        partitioned by class, so a worker with no class to take is a JVM
+     *                        started for nothing
+     * @param estimatedMillis what the covered mutants are expected to cost in total
+     */
+    static int workerCountFor(int requested, long estimatedMillis) {
+        if (requested <= 1) {
+            return 1;
+        }
+        // Compared as longs and only then narrowed. A duration large enough to overflow the
+        // division is not a real workload, but it is reachable from a hand-edited or corrupted
+        // cache, and the cast used to wrap negative -- which newFixedThreadPool rejects outright
+        // rather than falling back to something sensible.
+        long justified = Math.max(1, estimatedMillis / WORK_PER_WORKER_MILLIS);
+        return (int) Math.min(requested, justified);
     }
 
     /** What one mutant costs: its first test, since early exit means that usually decides it. */

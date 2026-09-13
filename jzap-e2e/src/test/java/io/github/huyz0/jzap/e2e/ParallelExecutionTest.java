@@ -21,10 +21,23 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Parallel execution must change how long a run takes and nothing else.
+ * Asking for more threads must change how long a run takes and nothing else.
  *
  * <p>Thread count leaking into a verdict or into report bytes would break the Gradle build
  * cache before it is even built, so both are asserted rather than assumed.
+ *
+ * <h2>What this fixture can and cannot show</h2>
+ *
+ * The engine caps workers at what the work justifies, because starting an analysis JVM costs
+ * about a quarter of a second and starts it cold. This fixture is a few tens of milliseconds of
+ * work, so asking for eight threads here yields one worker -- which means these tests prove that
+ * the request is honoured without changing the answer, not that eight JVMs produce the same
+ * answer as one. {@code workersActuallyUsed} asserts that plainly rather than leaving the
+ * distinction to be rediscovered.
+ *
+ * <p>The rule that decides the count is checked at realistic scales in
+ * {@code MutantExecutor.workerCountFor}'s own test, and genuinely parallel runs are measured by
+ * the bench harness, whose S1b scenario runs the 1080-mutant fixture at 1, 2, 4 and 20 threads.
  */
 class ParallelExecutionTest {
 
@@ -35,6 +48,17 @@ class ParallelExecutionTest {
         Map<String, String> verdicts = new LinkedHashMap<>();
         result.mutants().forEach(m -> verdicts.put(m.key().asString(), m.status().name()));
         return verdicts;
+    }
+
+    @Test
+    void workersActuallyUsedAreCappedByTheWorkThisFixtureHas() {
+        AnalysisResult result = new AnalysisEngine(
+                new Fixture().model(Scope.all()).withThreads(8),
+                AnalysisEngine.Listener.SILENT).analyse(null);
+
+        assertEquals(1L, result.timings().get("executionMinionsStarted"),
+                "this fixture is too small to justify a second analysis JVM, so the tests below "
+                        + "compare capped runs; see the class comment");
     }
 
     @Test

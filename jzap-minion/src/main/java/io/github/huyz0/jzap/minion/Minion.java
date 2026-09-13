@@ -132,7 +132,9 @@ public final class Minion {
 
     private void runTestForCoverage(Channel channel) throws IOException {
         String testId = channel.readString();
-        requireHarness();
+        if (!harnessReady(channel)) {
+            return;
+        }
         CoverageRecorder.drain();
         // Counting without a limit: this run is establishing what the unmutated code needs.
         LoopGuard.arm(0);
@@ -180,7 +182,9 @@ public final class Minion {
         for (int i = 0; i < count; i++) {
             tests.add(channel.readString());
         }
-        requireHarness();
+        if (!harnessReady(channel)) {
+            return;
+        }
         TestHarness.Outcome outcome;
         // Activating, running and resetting in one command rather than three: on the bench fixture
         // the two extra round trips were a fifth of the execution phase.
@@ -218,14 +222,26 @@ public final class Minion {
         return outcome.passed() ? Wire.OUTCOME_ALL_PASSED : Wire.OUTCOME_FAILED;
     }
 
-    private void requireHarness() {
+    /**
+     * Reports over the wire if this minion cannot run tests, rather than throwing.
+     *
+     * <p>Throwing from a command handler unwinds out of the serve loop and kills the process, so
+     * the controller sees a truncated response and the reason never reaches it -- which is worse
+     * than the condition being checked. Both of these are controller bugs rather than user
+     * mistakes, so the useful outcome is the message arriving somewhere a developer will read it.
+     *
+     * @return false when a reply has already been sent and the caller should stop
+     */
+    private boolean harnessReady(Channel channel) {
         if (harness == null) {
-            throw new IllegalStateException(
-                    "LIST_TESTS or PREPARE_TESTS must be sent before running tests");
+            error(channel, "LIST_TESTS or PREPARE_TESTS must be sent before running tests");
+            return false;
         }
         if (!JzapAgent.isLoaded()) {
-            throw new IllegalStateException("jzap agent is not loaded in the minion JVM");
+            error(channel, "jzap agent is not loaded in the minion JVM");
+            return false;
         }
+        return true;
     }
 
     private static void respondOk(Channel channel) {
