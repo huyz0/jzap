@@ -6,37 +6,46 @@ Fixture: 1 code path(s), generated bench classes
 Compilation is excluded; both tools analyse the same prebuilt classes.
 
 S1  full run
-  jzap (engine: naive)                 18.75s   (range 18.51-18.85s, n=3)
-  PIT                                  28.89s   (range 28.87-29.04s, n=3)
-  jzap is 1.54x faster than PIT here
+  jzap (default engine)                 8.89s   (range 8.00-8.90s, n=3)
+  PIT                                  29.58s   (range 28.63-29.68s, n=3)
+  jzap is 3.33x faster than PIT here
   Work parity: jzap analysed 40 more mutants than PIT (3.8%), so the ratio is conservative.
 
+S1a engine
+  jzap, naive                          19.54s   (range 19.17-21.28s, n=3)    1.00x vs naive
+  jzap, schemata                        8.70s   (range 8.00-9.66s, n=3)    2.25x vs naive
+  execution phase only: 20.06s -> 8.34s, 2.40x
+  verdicts identical: True  (naive {'KILLED': 835, 'NO_COVERAGE': 120, 'SURVIVED': 125})
+  Schemata compiles every mutant of a class in at once, so selecting one is a
+  field write rather than a class redefinition -- which makes the JVM re-verify
+  the class and discard its compiled code, once per mutant.
+
 S1b thread scaling (20 cores available)
-  jzap, 1 thread(s)                    18.76s   (range 18.50-18.91s, n=3)    1.00x vs 1 thread
-  jzap, 2 thread(s)                    12.06s   (range 12.06-12.16s, n=3)    1.56x vs 1 thread
-  jzap, 4 thread(s)                     8.64s   (range 8.51-8.65s, n=3)    2.17x vs 1 thread
-  jzap, 20 thread(s)                    6.64s   (range 6.41-6.67s, n=3)    2.83x vs 1 thread
-  fastest at 20 thread(s), 4.35x PIT
+  jzap, 1 thread(s)                     8.53s   (range 8.08-8.62s, n=3)    1.00x vs 1 thread
+  jzap, 2 thread(s)                     5.40s   (range 5.36-5.41s, n=3)    1.58x vs 1 thread
+  jzap, 4 thread(s)                     4.47s   (range 4.45-4.48s, n=3)    1.91x vs 1 thread
+  jzap, 20 thread(s)                    4.52s   (range 4.43-4.60s, n=3)    1.89x vs 1 thread
+  fastest at 4 thread(s), 6.62x PIT
   Scaling is sublinear because the coverage phase is serial and this fixture
   has only 40 classes: work is partitioned by class, so beyond a handful of
   workers each one pays JVM startup for very little work.
 
 S3  diff run, one changed line
   target: bench/Unit0.java line 22, 6 mutants in scope of 1080 total
-  jzap (patch-scoped)                   1.61s   (range 1.60-1.65s, n=3)
-  11.6x faster than its own full run
+  jzap (patch-scoped)                   1.59s   (range 1.56-1.59s, n=3)
+  5.6x faster than its own full run
   Not compared against PIT: PIT's free scoping works at changed-file
   granularity and needs a git repository, so it would be doing a different
   amount of work. Line-level scoping in the PIT ecosystem is arcmutate's,
   which is commercial and unmeasured here.
 
 S5  re-run with no changes, cache warm
-  jzap                                  0.42s   (range 0.41-0.42s, n=3)
-  2.2% of a full run; 44.6x faster
+  jzap                                  0.43s   (range 0.42-0.43s, n=3)
+  4.8% of a full run; 20.9x faster
 
 S6  re-run after one class was recompiled
-  jzap                                  1.95s   (range 1.91-1.95s, n=3)
-  4.6x the no-change run, and still 9.6x faster than a full run
+  jzap                                  1.75s   (range 1.72-1.77s, n=3)
+  4.1x the no-change run, and still 5.1x faster than a full run
   The cache is restored to its pre-change state before each repetition, so
   every measured run is genuinely the first one after the change.
   The change is to a method no test covers, so no verdict moves: what this
@@ -50,9 +59,13 @@ Mutants and verdicts
 Caveats, stated because a timing without them is not usable:
   - Run on a developer machine, not an isolated bench host. Treat the ratio as
     indicative and the absolute numbers as machine-specific.
-  - jzap's engine here is the deliberately slow reference implementation: one
-    mutant at a time, one thread, no schemata, no warm daemon, no cache. Those
-    are M8-M11 in docs/delivery-plan.md.
-  - PIT runs multi-process by default; both were pinned to one thread.
+  - S1, S3, S5 and S6 use jzap's defaults: the schemata engine, one thread,
+    and no cache except where the scenario says otherwise. S1a compares the
+    engines directly.
+  - Still missing: the warm daemon of M9, and block-granularity coverage.
+  - PIT runs multi-process by default; both were pinned to one thread except
+    where S1b says otherwise.
+  - Run-to-run variance on this machine is wide when anything else is running.
+    Compare medians within one report, not across reports.
   - Mutant counts differ slightly by design; see tools/parity for the exact,
     triaged inventory difference.

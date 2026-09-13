@@ -70,9 +70,13 @@ because PIT does none of them, so each dropped mutant would become a difference 
 correctness oracle.
 
 `./gradlew :tools:bench:reduction` reports speed and **detection loss** together. On the bench
-fixture one-per-line halves the mutant count for a 1.9x speedup and stops reporting 43 of 125
+fixture one-per-line halves the mutant count for a 1.4x speedup and stops reporting 43 of 125
 genuine gaps; TCE drops nothing at all on javac output, for a reason worth reading in
 [delivery-plan.md](delivery-plan.md).
+
+That 1.4x was 1.9x before the schemata engine landed. A reduction technique pays in proportion to
+how much of a run is per-mutant cost, and schemata made a mutant cheap — so the trade of a third of
+the findings for a shrinking speedup keeps getting worse.
 
 **A resident daemon.** `jzap run --daemon` hands the work to a jzap that is already warm, saving
 the tool's own JVM startup — on a cached run, most of the wall clock. Measured at 0.35s to 0.17s.
@@ -170,21 +174,27 @@ bench fixture (40 classes, 200 tests, ~1080 mutants) on a developer machine:
 
 | Scenario | jzap | PIT |
 |---|---|---|
-| Full run, one thread | 9.7s | 34.4s |
-| Full run, 20 threads | 4.9s | not comparable (PIT pinned to one thread) |
+| Full run, one thread | 8.9s | 29.6s |
+| Full run, 4 threads | 4.5s | not comparable (PIT pinned to one thread) |
 | Diff run, one changed line, 6 mutants in scope | 1.6s | not comparable |
-| Re-run with no changes, cache warm | 0.44s | no equivalent |
-| Re-run after one class recompiled | 1.9s | no equivalent |
+| Re-run with no changes, cache warm | 0.43s | no equivalent |
+| Re-run after one class recompiled | 1.8s | no equivalent |
+| Re-run with no changes, warm daemon | 0.17s | no equivalent |
 
-At one thread that is 3.5x faster than PIT while analysing 40 *more* mutants (3.8%), so the ratio
-is conservative rather than flattered. 7.1x at twenty threads, against a PIT pinned to one.
+At one thread that is 3.3x faster than PIT while analysing 40 *more* mutants (3.8%), so the ratio
+is conservative rather than flattered. 6.6x at four threads, against a PIT pinned to one.
 
-Thread scaling is sublinear — 1.00x, 1.65x, 2.02x, 2.07x at 1, 2, 4 and 20 threads — because the
+The schemata engine accounts for 2.25x of that (2.40x on the execution phase alone) against the
+reference engine, with verdicts asserted identical.
+
+Thread scaling is sublinear — 1.00x, 1.58x, 1.91x, 1.89x at 1, 2, 4 and 20 threads — because the
 coverage phase is serial and the fixture has only 40 classes, so beyond a handful of workers each
 one pays JVM startup for very little work.
 
-Run-to-run variance on a working machine is wide: compare medians within one report, not across
-reports.
+**Run these on a quiet machine.** An earlier run taken while a build was running alongside it
+reported reduction techniques at 0.98x and 0.72x — numbers that invited a conclusion about
+reduction no longer paying, and that were entirely contention. Compare medians within one report,
+never across reports.
 
 Re-running after one recompiled class costs 4.6x a no-change run because any change to any class
 invalidates the whole coverage map. That is deliberate: a changed production class can alter

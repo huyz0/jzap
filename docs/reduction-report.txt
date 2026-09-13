@@ -4,17 +4,23 @@ Mutant reduction: what each technique removes, and what it costs
 
 technique           mutants  dropped    time  speedup  survivors   lost    loss
 -------------------------------------------------------------------------------
-baseline               1080        0  19.05s    1.00x        125      0    0.0%
-dedup                  1080        0  19.12s    1.00x        125      0    0.0%
-arid                   1080        0  19.07s    1.00x        125      0    0.0%
-one-per-line            520      560   9.91s    1.92x         82     43   34.4%
-all three               520      560  10.03s    1.90x         82     43   34.4%
-extreme mutation        240      840   4.92s    3.87x          0    125  100.0%
+baseline               1080        0   8.01s    1.00x        125      0    0.0%
+dedup                  1080        0   8.38s    0.96x        125      0    0.0%
+arid                   1080        0   8.89s    0.90x        125      0    0.0%
+one-per-line            520      560   5.73s    1.40x         82     43   34.4%
+all three               520      560   4.83s    1.66x         82     43   34.4%
+extreme mutation        240      840   4.90s    1.63x          0    125  100.0%
 
 survivors: gaps in the test suite the run reports.
 lost:      mutants that survived the full run and are no longer generated at
            all. Each one is a real gap the reduced run will not report, which
            is the price of the speedup in the column beside it.
+
+A reduction technique only pays when per-mutant cost dominates the run. Under the
+schemata engine a mutant costs a field write, so halving the mutant count halves
+something that is no longer the bottleneck -- and extreme mutation, whose whole-body
+replacement cannot be compiled into a schemata class, takes the slower redefinition
+path for every one of its mutants. Measure before reaching for any of these.
 
 Extreme mutation is listed alongside these but is not the same kind of thing:
 it replaces the mutator set rather than filtering it, so its mutants are not a

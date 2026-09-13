@@ -113,7 +113,9 @@ public final class AnalysisEngine {
         long discoveryStart = System.nanoTime();
         listener.phase("discovery", describeModules());
         Map<String, ClassUnderTest> classes = scanClasses();
+        warnIfNothingToMutate(classes);
         List<Mutant> inScope = discover(classes, changed);
+        warnIfNoMutants(classes, inScope, changed);
         timings.put("discovery", millisSince(discoveryStart));
 
         if (inScope.isEmpty()) {
@@ -200,6 +202,57 @@ public final class AnalysisEngine {
         return packagePath + file;
     }
 
+    /**
+     * Diagnostics for the failures that otherwise produce a plausible-looking nothing.
+     *
+     * <p>A run that finds no classes, no mutants or no tests still completes, prints a score and
+     * exits zero. That is the shape of the problems that dominate a mutation tool's support load,
+     * so each one says what was looked at and what to check.
+     */
+    private void warnIfNothingToMutate(Map<String, ClassUnderTest> classes) {
+        if (!classes.isEmpty()) {
+            return;
+        }
+        List<String> missing = new ArrayList<>();
+        for (ModuleModel module : model.modules()) {
+            for (String path : module.mutableCodePaths()) {
+                if (!java.nio.file.Files.exists(Path.of(path))) {
+                    missing.add(path);
+                }
+            }
+        }
+        StringBuilder message = new StringBuilder("no compiled classes were found to mutate.");
+        if (!missing.isEmpty()) {
+            message.append(" These code paths do not exist: ").append(String.join(", ", missing))
+                    .append(". Compile the project first.");
+        } else {
+            message.append(" The code paths exist but contain no class files");
+            if (!model.scope().includeClasses().isEmpty()) {
+                message.append(" that match ").append(String.join(", ", model.scope().includeClasses()));
+            }
+            message.append(". Run with --dry-run to see the resolved paths.");
+        }
+        listener.warning(message.toString());
+    }
+
+    private void warnIfNoMutants(Map<String, ClassUnderTest> classes, List<Mutant> inScope,
+                                 ChangedLines changed) {
+        if (!inScope.isEmpty() || classes.isEmpty()) {
+            return;
+        }
+        if (changed != null) {
+            // The healthy case for a diff-scoped run, and worth saying plainly so nobody reads it
+            // as a failure.
+            listener.phase("scope", "no changed line carries a mutant; nothing to analyse");
+            return;
+        }
+        listener.warning(classes.size() + " class(es) were scanned but none yielded a mutant. "
+                + "The usual cause is classes compiled without debug information: a mutant with no "
+                + "line number cannot be pointed at any source and is not reported. Check that the "
+                + "build compiles with -g, which is the default for Gradle and Maven. "
+                + "Run 'jzap list-mutants' to see the inventory without running any test.");
+    }
+
     // ---------------------------------------------------------------- coverage
 
     /**
@@ -255,6 +308,13 @@ public final class AnalysisEngine {
             try (MinionProcess minion = MinionProcess.start(module, jars, true)) {
                 minion.initCoverage(index.size(), instrumented);
                 List<String> tests = minion.listTests(module.testClassPaths());
+                if (tests.isEmpty()) {
+                    listener.warning("no tests were discovered in " + module.id() + ". Every mutant "
+                            + "it covers will be reported as uncovered. Check that "
+                            + "junit-platform-launcher is on the test runtime classpath and that "
+                            + "testClassPaths points at compiled test classes; 'jzap run --dry-run' "
+                            + "prints both.");
+                }
                 int done = 0;
                 for (String testId : tests) {
                     MinionProcess.TestCoverage result;

@@ -15,5 +15,10 @@ An ultra-fast, diff-aware mutation testing tool for Java and Kotlin.
   and performance harness: corpus, mutant normalisation, agreement matrix, triage
   discipline, benchmark scenarios and fairness rules.
 - [bench-report.txt](bench-report.txt) — the most recent benchmark output, verbatim.
+- [troubleshooting.md](troubleshooting.md) — the failures people actually hit, and what each means.
+- [compatibility.md](compatibility.md) — what jzap has been run against, rather than what it might
+  work with.
+- [versioning.md](versioning.md) — what counts as a breaking change to the model schema, the cache
+  format, mutator ids and mutant keys.
 - [adr/](adr/) — decision records.
   - [ADR 0001](adr/0001-implementation-language.md) — Java for the engine, not Rust.

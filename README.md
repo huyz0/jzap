@@ -144,4 +144,7 @@ nobody noticed. See [docs/parity-and-benchmarks.md](docs/parity-and-benchmarks.m
 - [docs/architecture.md](docs/architecture.md) — the build-tool-agnostic core
 - [docs/delivery-plan.md](docs/delivery-plan.md) — 23 milestones, with kill criteria
 - [docs/parity-and-benchmarks.md](docs/parity-and-benchmarks.md) — the PIT comparison harness
+- [docs/troubleshooting.md](docs/troubleshooting.md) — the failures people actually hit
+- [docs/compatibility.md](docs/compatibility.md) — JDK, build tool, framework and language versions
+- [docs/versioning.md](docs/versioning.md) — what counts as a breaking change
 - [docs/adr/](docs/adr/) — decision records
