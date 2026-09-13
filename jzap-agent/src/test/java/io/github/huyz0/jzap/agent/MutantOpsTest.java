@@ -292,6 +292,28 @@ class MutantOpsTest {
         assertFalse(MutantOps.booleanReturn(false, MutantSwitch.NONE, MutantSwitch.NONE));
     }
 
+    /**
+     * The other half of that rule: an op taking a single id has no such guard, so NONE selects
+     * the mutant.
+     *
+     * <p>Pinned deliberately rather than fixed. These are emitted only where the mutant exists --
+     * the transformer leaves the original instruction alone where it does not -- so the guard
+     * would be dead weight on every arithmetic operation in the code under test. What the guard
+     * buys elsewhere, this test buys here: it says out loud that passing NONE to one of these
+     * would make the mutant the default, so a transformer change that starts doing it is a bug
+     * even though nothing throws.
+     */
+    @Test
+    void aSingleIdOpHasNoNoneGuardAndMustNeverBeGivenOne() {
+        MutantSwitch.deactivate();
+        assertEquals(MutantSwitch.NONE, MutantSwitch.active());
+
+        assertEquals(-1, MutantOps.iadd(2, 3, MutantSwitch.NONE),
+                "2 - 3: the subtraction mutant, with no mutant selected at all");
+        assertEquals(0, MutantOps.intReturn(7, MutantSwitch.NONE));
+        assertEquals(1, MutantOps.increment(2, 1, MutantSwitch.NONE));
+    }
+
     // ------------------------------------------------------------ returns
 
     @Test

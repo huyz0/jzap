@@ -14,8 +14,21 @@ package io.github.huyz0.jzap.agent;
  * analysis that fails on a classpath the transformer cannot fully resolve. This design avoids that
  * entire class of problem.
  *
- * <p>An id of {@link MutantSwitch#NONE} means no mutant of that kind exists at that spot, and the
- * comparison against the active id can then never match.
+ * <h2>Which ids may be {@link MutantSwitch#NONE}</h2>
+ *
+ * Not all of them, and the difference matters because the switch <em>idles</em> at {@code NONE}:
+ * a plain {@code active() == id} is true whenever both are {@code NONE}, which would select the
+ * mutant exactly when nothing at all is supposed to be active.
+ *
+ * <ul>
+ *   <li>The methods taking <b>two</b> ids -- {@code booleanReturn} and every conditional -- are
+ *       emitted wherever either of their two mutators applies, so one id can legitimately be
+ *       {@code NONE}. Each of them therefore tests {@code id != NONE} before comparing.
+ *   <li>The methods taking <b>one</b> id are emitted only where that mutant actually exists: the
+ *       transformer pushes the index and, where there is none, leaves the original instruction
+ *       alone instead. They have no {@code NONE} guard and must never be passed {@code NONE} --
+ *       doing so would make the mutant the default behaviour.
+ * </ul>
  *
  * <p>Generated in bulk and checked in, rather than generated at build time: it is read far more
  * often than it is changed, and a reader tracing a wrong verdict should be able to see exactly

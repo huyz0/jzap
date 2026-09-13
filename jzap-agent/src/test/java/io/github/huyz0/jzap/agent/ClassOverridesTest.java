@@ -74,21 +74,18 @@ class ClassOverridesTest {
     }
 
     @Test
-    void theOriginalBytesAreKeptAsFirstSeen() throws Exception {
-        // Loading it is what makes the transformer record it.
+    void aClassCanBeOverriddenTwiceAndStillRestored() throws Exception {
+        // Restoring relies on the JVM's own copy of the bytes rather than one kept here, so the
+        // property that matters is that it survives repeated overriding.
         assertEquals(1, OverrideVictimA.value());
-        byte[] original = ClassOverrides.original(OverrideVictimA.class.getName());
-        assertNotNull(original, "the transformer records every class it is offered");
-
         ClassOverrides.install(OverrideVictimA.class.getName(), victimBRenamedToA());
+        ClassOverrides.install(OverrideVictimA.class.getName(), victimBRenamedToA());
+        assertEquals(2, OverrideVictimA.value());
 
-        assertArrayEquals(original, ClassOverrides.original(OverrideVictimA.class.getName()),
-                "overriding a class must not overwrite the record of what it originally was");
-    }
+        ClassOverrides.remove(OverrideVictimA.class.getName());
 
-    @Test
-    void aClassThatWasNeverLoadedHasNoRecordedOriginal() {
-        assertNull(ClassOverrides.original("io.github.huyz0.jzap.agent.NeverLoaded"));
+        assertEquals(1, OverrideVictimA.value(),
+                "the original has to come back from the JVM, since nothing here kept a copy");
     }
 
     @Test

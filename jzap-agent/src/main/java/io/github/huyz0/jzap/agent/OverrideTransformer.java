@@ -11,9 +11,6 @@ final class OverrideTransformer implements ClassFileTransformer {
         if (internalName == null) {
             return null;
         }
-        if (beingRedefined == null) {
-            ClassOverrides.rememberOriginal(internalName, classfileBuffer);
-        }
         return ClassOverrides.lookup(internalName);
     }
 }
