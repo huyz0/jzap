@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -86,6 +87,7 @@ class JzapPluginTest {
                 import org.junit.jupiter.api.Test;
 
                 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
                 import static org.junit.jupiter.api.Assertions.assertFalse;
                 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -314,5 +316,131 @@ class JzapPluginTest {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(e);
         }
+    }
+
+    /**
+     * An aggregate run over two modules, where the library module has no tests of its own.
+     *
+     * <p>Analysed a module at a time this is the case that produces a meaningless answer: every
+     * mutant in the library reports as uncovered, because the tests that exercise it live next
+     * door. PIT supports it only partially and only with explicit configuration.
+     */
+    @Test
+    void theAggregateTaskLetsOneModulesTestsKillAnothersMutants() throws IOException {
+        Path multi = projectDir.resolve("multi");
+        writeMultiModuleProject(multi);
+
+        BuildResult result = GradleRunner.create()
+                .withProjectDir(multi.toFile())
+                .withPluginClasspath()
+                .withArguments("mutationTestAll", "--stacktrace")
+                .forwardOutput()
+                .build();
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":mutationTestAll").getOutcome());
+        String json = Files.readString(multi.resolve("build/reports/jzap-all/jzap-result.json"));
+        assertTrue(json.contains("lib.Clamp"), "the library module should have been analysed:\n" + json);
+        assertFalse(json.contains("\"status\": \"NO_COVERAGE\""),
+                "a library mutant is only uncovered if cross-module selection failed:\n" + json);
+        assertTrue(json.contains("app.RunnerTest"),
+                "the killing tests live in the other module:\n" + json);
+    }
+
+    @Test
+    void theAggregateTaskIsConfigurationCacheCompatible() throws IOException {
+        Path multi = projectDir.resolve("multi");
+        writeMultiModuleProject(multi);
+
+        BuildResult result = GradleRunner.create()
+                .withProjectDir(multi.toFile())
+                .withPluginClasspath()
+                .withArguments("mutationTestAll", "--configuration-cache")
+                .forwardOutput()
+                .build();
+
+        assertTrue(result.getOutput().contains("Configuration cache entry stored"),
+                result.getOutput());
+    }
+
+    private void writeMultiModuleProject(Path root) throws IOException {
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("settings.gradle"),
+                "rootProject.name = 'multi'\ninclude 'core', 'app'\n");
+        Files.writeString(root.resolve("build.gradle"), """
+                plugins { id 'io.github.huyz0.jzap' apply false }
+
+                subprojects {
+                    apply plugin: 'java'
+                    apply plugin: 'io.github.huyz0.jzap'
+                    repositories { mavenCentral() }
+                    dependencies {
+                        testImplementation 'org.junit.jupiter:junit-jupiter:5.14.0'
+                        testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.14.0'
+                    }
+                    test { useJUnitPlatform() }
+                    jzap {
+                        engineClasspath.setFrom(fileTree('%s') { include '*.jar' })
+                        reporters = ['console', 'json']
+                    }
+                }
+
+                apply plugin: 'io.github.huyz0.jzap'
+                jzap { engineClasspath.setFrom(fileTree('%s') { include '*.jar' }) }
+                """.formatted(engineLib(), engineLib()));
+        Files.createDirectories(root.resolve("core"));
+        Files.createDirectories(root.resolve("app"));
+        Files.writeString(root.resolve("core/build.gradle"), "");
+        Files.writeString(root.resolve("app/build.gradle"),
+                "dependencies { implementation project(':core') }\n");
+
+        Path lib = root.resolve("core/src/main/java/lib");
+        Files.createDirectories(lib);
+        Files.writeString(lib.resolve("Clamp.java"), """
+                package lib;
+
+                /** A library class with no tests of its own. */
+                public class Clamp {
+                    public int clamp(int value, int max) {
+                        return value > max ? max : value;
+                    }
+                }
+                """);
+
+        Path app = root.resolve("app/src/main/java/app");
+        Files.createDirectories(app);
+        Files.writeString(app.resolve("Runner.java"), """
+                package app;
+
+                import lib.Clamp;
+
+                public class Runner {
+                    public int limited(int value) {
+                        return new Clamp().clamp(value, 10);
+                    }
+                }
+                """);
+
+        Path appTest = root.resolve("app/src/test/java/app");
+        Files.createDirectories(appTest);
+        Files.writeString(appTest.resolve("RunnerTest.java"), """
+                package app;
+
+                import org.junit.jupiter.api.Test;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
+                class RunnerTest {
+                    @Test
+                    void clampsAboveTheLimit() {
+                        assertEquals(10, new Runner().limited(50));
+                    }
+
+                    @Test
+                    void leavesSmallValues() {
+                        assertEquals(3, new Runner().limited(3));
+                    }
+                }
+                """);
     }
 }

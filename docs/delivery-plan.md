@@ -880,7 +880,34 @@ testing does not exist there
 
 ## M20 · Multi-module single run
 
-**Not started.**
+**Done.** The engine analyses every module in one pass rather than looping over them, so a test in
+one module kills a mutant in another. The Gradle plugin gains `mutationTestAll`, which covers the
+whole reactor in one invocation and is configuration-cache compatible.
+
+This is the ordinary shape of a multi-module project and the case that module-at-a-time analysis
+cannot see: a library module with no tests of its own reports every mutant as uncovered, and the
+score is meaningless. The fixture is exactly that shape -- `multi-core` has no test sources at all,
+and its mutants are killed by `multi-app`'s tests.
+
+What it required beyond the loop:
+
+- **Coverage runs once per test-bearing module**, with every in-scope class instrumented for every
+  run. A class a module cannot see never loads and its probes never fire; a class it can see gets
+  attributed correctly even though it was compiled next door.
+- **A worker holds one analysis JVM per module**, started on demand, because a single mutant's
+  covering tests can live in several modules and each needs its own classpath. Tests are run group
+  by group, stopping at the first kill.
+- **Modules that declare a test class path but have no compiled tests are skipped.** An aggregate
+  run over a real reactor routinely includes one, and starting an analysis JVM on a classpath with
+  no test framework loses the whole run to a module that had nothing to contribute.
+- The plugin's aggregate task collects module descriptions as each project is configured, rather
+  than reaching across projects. Iterating other projects from a task registration fails outright
+  inside an included build, and reaching across at execution time is what breaks the configuration
+  cache.
+
+Outstanding: work-stealing across modules is not scheduled explicitly -- the mutant queue is shared
+and partitioned by class, which keeps cores busy, but a single very slow module still gates the
+end of the run. No large-reactor scale test yet.
 
 **Goal.** One invocation over a whole reactor, with cross-module test selection and the
 daemon warmed once — the thing PIT supports only partially and only with explicit

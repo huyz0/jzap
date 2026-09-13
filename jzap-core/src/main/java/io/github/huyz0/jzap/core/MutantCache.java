@@ -110,6 +110,8 @@ public final class MutantCache {
      * @param durations       test id to its baseline duration, the wall-clock backstop's input
      * @param loopIterations  test id to the loop iterations it needed unmutated, which the
      *                        runaway-loop limit is derived from
+     * @param testModules     test id to the module whose classpath can run it, so a reused map
+     *                        still knows where each test belongs
      * @param failingTests    tests that failed with no mutant applied
      */
     public record CachedCoverage(
@@ -118,6 +120,7 @@ public final class MutantCache {
             Map<String, Set<String>> testsByLocation,
             Map<String, Long> durations,
             Map<String, Long> loopIterations,
+            Map<String, String> testModules,
             List<String> failingTests) {
     }
 
@@ -162,6 +165,7 @@ public final class MutantCache {
             Map<String, Set<String>> testsByLocation = new LinkedHashMap<>();
             Map<String, Long> durations = new LinkedHashMap<>();
             Map<String, Long> iterations = new LinkedHashMap<>();
+            Map<String, String> testModules = new LinkedHashMap<>();
             List<String> failing = new ArrayList<>();
 
             for (String line : lines.subList(separator + 1, lines.size())) {
@@ -191,6 +195,10 @@ public final class MutantCache {
                     iterations.put(parts[1], Long.parseLong(parts[2]));
                     continue;
                 }
+                if (parts[0].equals("test-module") && parts.length == 3) {
+                    testModules.put(parts[1], parts[2]);
+                    continue;
+                }
                 if (parts[0].equals("failing-test") && parts.length == 2) {
                     failing.add(parts[1]);
                     continue;
@@ -208,7 +216,7 @@ public final class MutantCache {
             }
             if (coverageKey != null) {
                 cache.storedCoverage = new CachedCoverage(coverageKey, coveredClasses,
-                        testsByLocation, durations, iterations, failing);
+                        testsByLocation, durations, iterations, testModules, failing);
             }
         } catch (IOException | IllegalArgumentException e) {
             cache.discardReason = "could not read the cache: " + e.getMessage();
@@ -355,6 +363,8 @@ public final class MutantCache {
             new TreeMap<>(coverage.loopIterations()).forEach((test, ticks) ->
                     text.append(String.join("\t", "test-iterations", test,
                             Long.toString(ticks))).append('\n'));
+            new TreeMap<>(coverage.testModules()).forEach((test, module) ->
+                    text.append(String.join("\t", "test-module", test, module)).append('\n'));
             coverage.failingTests().stream().sorted().forEach(test ->
                     text.append(String.join("\t", "failing-test", test)).append('\n'));
         }

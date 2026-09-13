@@ -26,7 +26,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Writes a project model and runs the engine against it.
@@ -124,6 +123,20 @@ public abstract class JzapTask extends DefaultTask {
     @Input
     public abstract ListProperty<String> getJvmArgs();
 
+    /**
+     * Pre-rendered module fragments for an aggregate run, one per project.
+     *
+     * <p>Rendered when the build is configured and carried as strings, because a task cannot hold
+     * a variable number of file collections and reaching across to another project at execution
+     * time is what breaks the configuration cache.
+     */
+    @Input
+    public abstract ListProperty<String> getModuleFragments();
+
+    /** Every class and classpath entry the aggregate covers, so up-to-date checks still work. */
+    @Classpath
+    public abstract ConfigurableFileCollection getAggregateInputs();
+
     @OutputDirectory
     public abstract DirectoryProperty getReportDir();
 
@@ -155,7 +168,8 @@ public abstract class JzapTask extends DefaultTask {
                         jzap { engineClasspath.setFrom(fileTree("path/to/jzap/lib")) }
                     """);
         }
-        if (getMutableCodePaths().getFiles().stream().noneMatch(File::exists)) {
+        boolean aggregate = !getModuleFragments().get().isEmpty();
+        if (!aggregate && getMutableCodePaths().getFiles().stream().noneMatch(File::exists)) {
             getLogger().lifecycle("jzap: nothing compiled to mutate in {}", getModuleId().get());
             return;
         }
@@ -211,20 +225,33 @@ public abstract class JzapTask extends DefaultTask {
         }
     }
 
+    /** One module's entry in the project model. Shared by the per-project and aggregate tasks. */
+    static String moduleFragment(String id, Iterable<File> mutableCodePaths,
+                                 Iterable<File> sourceRoots, Iterable<File> testClassPaths,
+                                 Iterable<File> testClasspath, List<String> jvmArgs) {
+        return """
+                {
+                  "id": %s,
+                  "mutableCodePaths": [%s],
+                  "sourceRoots": [%s],
+                  "testClassPaths": [%s],
+                  "testClasspath": [%s],
+                  "jvmArgs": [%s]
+                }""".formatted(quote(id), paths(mutableCodePaths), paths(sourceRoots),
+                paths(testClassPaths), paths(testClasspath), strings(jvmArgs));
+    }
+
     private void writeModel(Path model) {
+        List<String> modules = getModuleFragments().get();
+        if (modules.isEmpty()) {
+            modules = List.of(moduleFragment(getModuleId().get(), getMutableCodePaths().getFiles(),
+                    getSourceRoots().getFiles(), getTestClassPaths().getFiles(),
+                    getTestClasspath().getFiles(), getJvmArgs().get()));
+        }
         String json = """
                 {
                   "schemaVersion": 1,
-                  "modules": [
-                    {
-                      "id": %s,
-                      "mutableCodePaths": [%s],
-                      "sourceRoots": [%s],
-                      "testClassPaths": [%s],
-                      "testClasspath": [%s],
-                      "jvmArgs": [%s]
-                    }
-                  ],
+                  "modules": [%s],
                   "scope": {
                     "kind": "%s",
                     "granularity": %s,
@@ -237,12 +264,7 @@ public abstract class JzapTask extends DefaultTask {
                   "threads": %d
                 }
                 """.formatted(
-                quote(getModuleId().get()),
-                paths(getMutableCodePaths()),
-                paths(getSourceRoots()),
-                paths(getTestClassPaths()),
-                paths(getTestClasspath()),
-                strings(getJvmArgs().get()),
+                String.join(",\n", modules),
                 getFrom().isPresent() || getTo().isPresent() ? "DIFF" : "ALL",
                 quote(getScope().getOrElse("line")),
                 strings(getIncludeClasses().get()),
@@ -259,15 +281,16 @@ public abstract class JzapTask extends DefaultTask {
         }
     }
 
-    private static String paths(ConfigurableFileCollection files) {
-        return files.getFiles().stream()
-                .map(File::getAbsolutePath)
-                .map(JzapTask::quote)
-                .collect(Collectors.joining(", "));
+    private static String paths(Iterable<File> files) {
+        List<String> rendered = new ArrayList<>();
+        files.forEach(file -> rendered.add(quote(file.getAbsolutePath())));
+        return String.join(", ", rendered);
     }
 
     private static String strings(List<String> values) {
-        return values.stream().map(JzapTask::quote).collect(Collectors.joining(", "));
+        List<String> rendered = new ArrayList<>();
+        values.forEach(value -> rendered.add(quote(value)));
+        return String.join(", ", rendered);
     }
 
     private static String quote(String value) {

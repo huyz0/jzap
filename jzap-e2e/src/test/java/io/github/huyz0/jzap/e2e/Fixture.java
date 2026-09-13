@@ -36,6 +36,30 @@ final class Fixture {
         return new Fixture("jzap.kotest.descriptor", ":fixtures:kotest-sample");
     }
 
+    /**
+     * A two-module project: a library with no tests of its own, and an application module whose
+     * tests exercise it.
+     */
+    static ProjectModel multiModule() {
+        Fixture core = new Fixture("jzap.multi.core.descriptor", ":fixtures:multi-core");
+        Fixture app = new Fixture("jzap.multi.app.descriptor", ":fixtures:multi-app");
+        return new ProjectModel(1,
+                List.of(core.module(), app.module()),
+                Scope.all(), null, List.of("json"), 1, 1.5, 4000, 100);
+    }
+
+    ModuleModel module() {
+        return new ModuleModel(
+                moduleId,
+                paths("mainClasses"),
+                paths("sourceRoot"),
+                paths("testClasses"),
+                paths("testRuntimeClasspath"),
+                null,
+                List.of("-Xmx512m"),
+                null);
+    }
+
     private final String moduleId;
 
     private Fixture(String property, String moduleId) {
@@ -93,15 +117,6 @@ final class Fixture {
     }
 
     ProjectModel model(Scope scope) {
-        ModuleModel module = new ModuleModel(
-                moduleId,
-                paths("mainClasses"),
-                paths("sourceRoot"),
-                paths("testClasses"),
-                paths("testRuntimeClasspath"),
-                null,
-                List.of("-Xmx512m"),
-                null);
-        return new ProjectModel(1, List.of(module), scope, null, List.of("json"), 1, 1.5, 4000, 100);
+        return new ProjectModel(1, List.of(module()), scope, null, List.of("json"), 1, 1.5, 4000, 100);
     }
 }

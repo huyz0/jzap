@@ -3,10 +3,12 @@ package io.github.huyz0.jzap.gradle;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.plugins.ExtraPropertiesExtension;
 import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -21,6 +23,9 @@ public class JzapPlugin implements Plugin<Project> {
     public static final String EXTENSION_NAME = "jzap";
     public static final String ANALYSE_TASK = "mutationTest";
     public static final String DIFF_TASK = "mutationTestDiff";
+    public static final String AGGREGATE_TASK = "mutationTestAll";
+    private static final String FRAGMENTS_KEY = "jzap.aggregate.fragments";
+    private static final String INPUTS_KEY = "jzap.aggregate.inputs";
     private static final String ENGINE_CONFIGURATION = "jzapEngine";
 
     @Override
@@ -45,11 +50,17 @@ public class JzapPlugin implements Plugin<Project> {
         SourceSet main = sourceSets(project).getByName(SourceSet.MAIN_SOURCE_SET_NAME);
         SourceSet test = sourceSets(project).getByName(SourceSet.TEST_SOURCE_SET_NAME);
 
+        contributeToAggregate(project, extension, main, test);
+
         project.getTasks().register(ANALYSE_TASK, JzapTask.class, task -> {
             task.setGroup("verification");
             task.setDescription("Runs mutation testing over this module.");
             configure(task, project, extension, engine, main, test);
         });
+
+        if (project == project.getRootProject()) {
+            registerAggregate(project, extension, engine);
+        }
 
         project.getTasks().register(DIFF_TASK, JzapTask.class, task -> {
             task.setGroup("verification");
@@ -62,6 +73,94 @@ public class JzapPlugin implements Plugin<Project> {
             task.getReportDir().convention(
                     project.getLayout().getBuildDirectory().dir("reports/jzap-diff"));
         });
+    }
+
+    /**
+     * Registers {@code mutationTestAll}: one invocation covering every module that applies the
+     * plugin.
+     *
+     * <p>Worth having as more than a convenience. Analysed a module at a time, a library module
+     * with no tests of its own reports every mutant as uncovered, because the tests that exercise
+     * it live next door. One invocation lets a test in any module kill a mutant in any other, and
+     * warms each analysis JVM once for the whole reactor rather than once per module.
+     *
+     * <p>Module descriptions are rendered while the build is configured and carried as strings.
+     * Reaching across to another project at execution time is what breaks the configuration cache,
+     * and a task cannot hold a variable number of file collections anyway.
+     */
+    private void registerAggregate(Project root, JzapExtension extension, Configuration engine) {
+        root.getTasks().register(AGGREGATE_TASK, JzapTask.class, task -> {
+            task.setGroup("verification");
+            task.setDescription("Runs mutation testing across every module in one pass.");
+            task.getReportDir().convention(
+                    root.getLayout().getBuildDirectory().dir("reports/jzap-all"));
+
+            // Each project contributes its own description as it is configured, and the task
+            // reads the accumulated list lazily. Iterating other projects from here instead would
+            // fail outright inside an included build, and reaching across at execution time is
+            // what breaks the configuration cache.
+            task.getModuleFragments().set(root.provider(() -> fragments(root)));
+            task.getAggregateInputs().from(root.provider(() -> inputs(root)));
+
+            task.getEngineClasspath().setFrom(root.provider(() ->
+                    extension.getEngineClasspath().isEmpty() ? engine : extension.getEngineClasspath()));
+            task.getModuleId().set(root.getPath());
+            task.getThreads().set(extension.getThreads());
+            task.getReporters().set(extension.getReporters());
+            task.getScope().set(extension.getScope());
+            task.getIncludeClasses().set(extension.getIncludeClasses());
+            task.getExcludeClasses().set(extension.getExcludeClasses());
+            task.getMutators().set(extension.getMutators());
+            task.getMutateLoopCounters().set(extension.getMutateLoopCounters());
+            task.getThreshold().set(root.provider(extension::getThreshold));
+            task.getFailOnSurvivors().set(extension.getFailOnSurvivors());
+            task.getJvmArgs().set(extension.getJvmArgs());
+            task.getCacheDir().set(extension.getCacheDir());
+        });
+    }
+
+    /**
+     * Records this project's contribution to an aggregate run.
+     *
+     * <p>The file collections are handed over whole rather than resolved to paths, so the
+     * aggregate task inherits the task dependencies that produce them.
+     */
+    private void contributeToAggregate(Project project, JzapExtension extension,
+                                       SourceSet main, SourceSet test) {
+        project.afterEvaluate(configured -> {
+            if (main.getAllJava().isEmpty() && test.getAllJava().isEmpty()) {
+                // A project that only carries configuration, which an aggregate root usually is.
+                return;
+            }
+            Project root = configured.getRootProject();
+            inputs(root).add(main.getOutput().getClassesDirs());
+            inputs(root).add(test.getRuntimeClasspath());
+            fragments(root).add(JzapTask.moduleFragment(
+                    configured.getPath(),
+                    main.getOutput().getClassesDirs().getFiles(),
+                    main.getAllJava().getSrcDirs(),
+                    test.getOutput().getClassesDirs().getFiles(),
+                    test.getRuntimeClasspath().getFiles(),
+                    extension.getJvmArgs().getOrElse(List.of())));
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> fragments(Project root) {
+        ExtraPropertiesExtension extra = root.getExtensions().getExtraProperties();
+        if (!extra.has(FRAGMENTS_KEY)) {
+            extra.set(FRAGMENTS_KEY, new ArrayList<String>());
+        }
+        return (List<String>) extra.get(FRAGMENTS_KEY);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> inputs(Project root) {
+        ExtraPropertiesExtension extra = root.getExtensions().getExtraProperties();
+        if (!extra.has(INPUTS_KEY)) {
+            extra.set(INPUTS_KEY, new ArrayList<Object>());
+        }
+        return (List<Object>) extra.get(INPUTS_KEY);
     }
 
     private void configure(JzapTask task, Project project, JzapExtension extension,
