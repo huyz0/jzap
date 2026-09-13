@@ -44,8 +44,8 @@ public final class PrimitiveReturnsMutator extends ReturnValueMutator {
     }
 
     @Override
-    protected boolean wouldBeNoOp(int opcode, Object constant) {
-        return isNoOp(opcode);
+    protected boolean wouldBeNoOp(Type returnType, PrecedingValue preceding) {
+        return isNoOp(preceding.opcode());
     }
 
     @Override

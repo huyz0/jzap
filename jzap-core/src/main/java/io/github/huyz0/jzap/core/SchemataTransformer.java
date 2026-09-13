@@ -7,6 +7,7 @@ import io.github.huyz0.jzap.core.mutator.IncrementsMutator;
 import io.github.huyz0.jzap.core.mutator.InvertNegsMutator;
 import io.github.huyz0.jzap.core.mutator.MathMutator;
 import io.github.huyz0.jzap.core.mutator.NegateConditionalsMutator;
+import io.github.huyz0.jzap.core.mutator.PrecedingValue;
 import io.github.huyz0.jzap.core.mutator.PrimitiveReturnsMutator;
 import io.github.huyz0.jzap.core.mutator.TrueReturnsMutator;
 import io.github.huyz0.jzap.model.Mutant;
@@ -145,17 +146,15 @@ final class SchemataTransformer {
         private final Type returnType;
 
         /**
-         * The instruction before the current one, when it was a constant push.
+         * What produced the value about to be returned.
          *
-         * <p>This has to be tracked exactly as {@code ReturnValueMutator} tracks it. Both use it
-         * to ask a return mutator whether its mutation would be a no-op, and a mutator that
-         * declines also declines to take an ordinal -- so a visitor here that forgot the previous
-         * instruction on a different set of opcodes would shift every later ordinal in the method
-         * and seed one mutant under another's key. Any callback one of them overrides, the other
-         * must too; SchemataVisitorParityTest holds them to it.
+         * <p>The same object the mutating pass uses, rather than a second copy of the tracking.
+         * Both ask a return mutator whether its mutation would be a no-op, and a mutator that
+         * declines also declines to take an ordinal -- so a visitor that tracked the instruction
+         * stream differently would shift every later ordinal in the method and seed one mutant
+         * under another's key.
          */
-        private int lastOpcode = -1;
-        private Object lastConstant;
+        private final PrecedingValue preceding = new PrecedingValue();
 
         SchemataMethodVisitor(MutationContext ctx, String descriptor, MethodVisitor next) {
             super(Opcodes.ASM9, next);
@@ -164,8 +163,7 @@ final class SchemataTransformer {
         }
 
         private void forget() {
-            lastOpcode = -1;
-            lastConstant = null;
+            preceding.forget();
         }
 
         @Override
@@ -190,16 +188,13 @@ final class SchemataTransformer {
                     return;
                 }
             }
-            int previous = lastOpcode;
-            Object previousConstant = lastConstant;
-            lastOpcode = opcode;
-            lastConstant = previous == opcode ? previousConstant : null;
+            preceding.insn(opcode);
             super.visitInsn(opcode);
         }
 
         /** @return true when a dispatch call was emitted in place of the plain return value */
         private boolean emitReturnDispatch() {
-            return ReturnRules.emitSchemata(ctx, mv, returnType, lastOpcode, lastConstant);
+            return ReturnRules.emitSchemata(ctx, mv, returnType, preceding);
         }
 
         private void emitMath(int opcode, int id) {
@@ -281,15 +276,13 @@ final class SchemataTransformer {
 
         @Override
         public void visitLdcInsn(Object value) {
-            lastOpcode = Opcodes.LDC;
-            lastConstant = value;
+            preceding.constantPush(Opcodes.LDC, value);
             super.visitLdcInsn(value);
         }
 
         @Override
         public void visitIntInsn(int opcode, int operand) {
-            lastOpcode = opcode;
-            lastConstant = operand;
+            preceding.constantPush(opcode, operand);
             super.visitIntInsn(opcode, operand);
         }
 
@@ -319,14 +312,14 @@ final class SchemataTransformer {
 
         @Override
         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-            forget();
+            preceding.field(opcode, owner, name, descriptor);
             super.visitFieldInsn(opcode, owner, name, descriptor);
         }
 
         @Override
         public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
                                     boolean isInterface) {
-            forget();
+            preceding.call(opcode, owner, name, descriptor);
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
         }
 

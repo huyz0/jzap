@@ -33,8 +33,8 @@ public final class TrueReturnsMutator extends ReturnValueMutator {
     }
 
     @Override
-    protected boolean wouldBeNoOp(int opcode, Object constant) {
-        return isNoOp(opcode);   // the method already returns true here
+    protected boolean wouldBeNoOp(Type returnType, PrecedingValue preceding) {
+        return isNoOp(preceding.opcode());   // the method already returns true here
     }
 
     @Override

@@ -5,6 +5,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Makes a reference-returning method return an empty value of its own type. PIT's
@@ -53,8 +54,67 @@ public final class EmptyReturnsMutator extends ReturnValueMutator {
                 || EMPTIES.containsKey(returnType.getInternalName());
     }
 
-    public static boolean isNoOp(int lastOpcode, Object constant) {
-        return lastOpcode == Opcodes.LDC && "".equals(constant);
+    /**
+     * Members that already produce the empty value of a type, keyed by that type.
+     *
+     * <p>Includes the {@code Collections.empty*} forms as well as the factories this mutator
+     * emits. They are not byte-identical to what it emits, but they are the same empty immutable
+     * collection, and PIT declines them too -- established by running its EMPTY_RETURNS over a
+     * probe of these shapes rather than assumed.
+     */
+    private static final Map<String, Set<String>> ALREADY_EMPTY = Map.ofEntries(
+            Map.entry("java/util/List", Set.of(
+                    "java/util/List.of:()Ljava/util/List;",
+                    "java/util/Collections.emptyList:()Ljava/util/List;")),
+            Map.entry("java/util/Set", Set.of(
+                    "java/util/Set.of:()Ljava/util/Set;",
+                    "java/util/Collections.emptySet:()Ljava/util/Set;")),
+            Map.entry("java/util/Map", Set.of(
+                    "java/util/Map.of:()Ljava/util/Map;",
+                    "java/util/Collections.emptyMap:()Ljava/util/Map;")),
+            Map.entry("java/util/Collection", Set.of(
+                    "java/util/List.of:()Ljava/util/List;",
+                    "java/util/Collections.emptyList:()Ljava/util/List;")),
+            Map.entry("java/util/Optional", Set.of("java/util/Optional.empty:()Ljava/util/Optional;")),
+            Map.entry("java/util/OptionalInt", Set.of("java/util/OptionalInt.empty:()Ljava/util/OptionalInt;")),
+            Map.entry("java/util/OptionalLong", Set.of("java/util/OptionalLong.empty:()Ljava/util/OptionalLong;")),
+            Map.entry("java/util/OptionalDouble", Set.of("java/util/OptionalDouble.empty:()Ljava/util/OptionalDouble;")),
+            Map.entry("java/util/stream/Stream", Set.of("java/util/stream/Stream.empty:()Ljava/util/stream/Stream;")),
+            Map.entry("java/lang/Boolean", Set.of("java/lang/Boolean.FALSE:Ljava/lang/Boolean;")));
+
+    /** The zero each boxing factory has to have been handed for the box to be an empty value. */
+    private static final Map<String, Integer> BOXED_ZERO = Map.of(
+            "java/lang/Integer.valueOf:(I)Ljava/lang/Integer;", Opcodes.ICONST_0,
+            "java/lang/Short.valueOf:(S)Ljava/lang/Short;", Opcodes.ICONST_0,
+            "java/lang/Byte.valueOf:(B)Ljava/lang/Byte;", Opcodes.ICONST_0,
+            "java/lang/Character.valueOf:(C)Ljava/lang/Character;", Opcodes.ICONST_0,
+            "java/lang/Long.valueOf:(J)Ljava/lang/Long;", Opcodes.LCONST_0,
+            "java/lang/Float.valueOf:(F)Ljava/lang/Float;", Opcodes.FCONST_0,
+            "java/lang/Double.valueOf:(D)Ljava/lang/Double;", Opcodes.DCONST_0);
+
+    /**
+     * Whether the value about to be returned is already the empty one for this type.
+     *
+     * <p>Three shapes, and all three come out of ordinary source. {@code return ""} is a constant
+     * push. {@code return List.of()} and {@code return Boolean.FALSE} are a static call and a
+     * static field read -- invisible to a guard that inspects only constants, which is why these
+     * used to be seeded and then survive forever. {@code return 0} from a method returning
+     * {@code Integer} is a zero followed by a boxing call, so it needs the instruction before the
+     * call as well.
+     */
+    public static boolean isNoOp(Type returnType, PrecedingValue preceding) {
+        if (returnType.getInternalName().equals("java/lang/String")) {
+            return preceding.opcode() == Opcodes.LDC && "".equals(preceding.constant());
+        }
+        String member = preceding.member();
+        if (member == null) {
+            return false;
+        }
+        if (ALREADY_EMPTY.getOrDefault(returnType.getInternalName(), Set.of()).contains(member)) {
+            return true;
+        }
+        Integer zero = BOXED_ZERO.get(member);
+        return zero != null && preceding.opcodeBeforeMember() == zero;
     }
 
     @Override
@@ -71,9 +131,8 @@ public final class EmptyReturnsMutator extends ReturnValueMutator {
     }
 
     @Override
-    protected boolean wouldBeNoOp(int opcode, Object constant) {
-        // The only empty value javac can have just pushed as a constant is the empty string.
-        return isNoOp(opcode, constant);
+    protected boolean wouldBeNoOp(Type returnType, PrecedingValue preceding) {
+        return isNoOp(returnType, preceding);
     }
 
     @Override

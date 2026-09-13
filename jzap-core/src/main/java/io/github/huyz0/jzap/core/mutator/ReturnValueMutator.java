@@ -32,15 +32,14 @@ abstract class ReturnValueMutator implements Mutator {
     protected abstract void pushReplacement(MethodVisitor mv, Type returnType);
 
     /**
-     * Whether the instruction immediately before the return already produces this mutator's
-     * replacement value, making the mutation a no-op.
+     * Whether the value about to be returned is already this mutator's replacement value, making
+     * the mutation a no-op.
      *
-     * @param opcode  opcode of the preceding instruction, or -1 if it was not a simple constant
-     *                push, or if a label or frame intervened. A label means the value arrives
-     *                from a merge of several paths, so nothing can be concluded about it.
-     * @param constant operand of a preceding LDC, otherwise null
+     * @param preceding what produced that value, as far as it can be named. A label or a frame
+     *                  clears it, because the value then arrives from a merge of several paths and
+     *                  nothing can be concluded about it.
      */
-    protected boolean wouldBeNoOp(int opcode, Object constant) {
+    protected boolean wouldBeNoOp(Type returnType, PrecedingValue preceding) {
         return false;
     }
 
@@ -60,8 +59,7 @@ abstract class ReturnValueMutator implements Mutator {
         private final MutationContext ctx;
         private final Type returnType;
         private final int returnOpcode;
-        private int lastOpcode = -1;
-        private Object lastConstant;
+        private final PrecedingValue preceding = new PrecedingValue();
 
         ReturnMutatingMethodVisitor(MethodVisitor next, MutationContext ctx, Type returnType,
                                     int returnOpcode) {
@@ -72,8 +70,7 @@ abstract class ReturnValueMutator implements Mutator {
         }
 
         private void forget() {
-            lastOpcode = -1;
-            lastConstant = null;
+            preceding.forget();
         }
 
         @Override
@@ -82,19 +79,12 @@ abstract class ReturnValueMutator implements Mutator {
                 mutateOrPassThrough(opcode);
                 return;
             }
-            int previous = lastOpcode;
-            Object previousConstant = lastConstant;
-            lastOpcode = opcode;
-            lastConstant = null;
-            // Keep the record from being lost by the very instruction we are inspecting.
-            if (previous == opcode && previousConstant != null) {
-                lastConstant = previousConstant;
-            }
+            preceding.insn(opcode);
             super.visitInsn(opcode);
         }
 
         private void mutateOrPassThrough(int opcode) {
-            if (wouldBeNoOp(lastOpcode, lastConstant)) {
+            if (wouldBeNoOp(returnType, preceding)) {
                 // Deliberately does not register a mutant, so discovery and application agree.
                 forget();
                 super.visitInsn(opcode);
@@ -116,8 +106,7 @@ abstract class ReturnValueMutator implements Mutator {
 
         @Override
         public void visitLdcInsn(Object value) {
-            lastOpcode = Opcodes.LDC;
-            lastConstant = value;
+            preceding.constantPush(Opcodes.LDC, value);
             super.visitLdcInsn(value);
         }
 
@@ -135,8 +124,7 @@ abstract class ReturnValueMutator implements Mutator {
 
         @Override
         public void visitIntInsn(int opcode, int operand) {
-            lastOpcode = opcode;
-            lastConstant = operand;
+            preceding.constantPush(opcode, operand);
             super.visitIntInsn(opcode, operand);
         }
 
@@ -154,14 +142,14 @@ abstract class ReturnValueMutator implements Mutator {
 
         @Override
         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-            forget();
+            preceding.field(opcode, owner, name, descriptor);
             super.visitFieldInsn(opcode, owner, name, descriptor);
         }
 
         @Override
         public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
                                     boolean isInterface) {
-            forget();
+            preceding.call(opcode, owner, name, descriptor);
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
         }
 

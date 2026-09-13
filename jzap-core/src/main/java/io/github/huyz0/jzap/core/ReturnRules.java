@@ -2,6 +2,7 @@ package io.github.huyz0.jzap.core;
 
 import io.github.huyz0.jzap.core.mutator.EmptyReturnsMutator;
 import io.github.huyz0.jzap.core.mutator.FalseReturnsMutator;
+import io.github.huyz0.jzap.core.mutator.PrecedingValue;
 import io.github.huyz0.jzap.core.mutator.PrimitiveReturnsMutator;
 import io.github.huyz0.jzap.core.mutator.TrueReturnsMutator;
 import io.github.huyz0.jzap.model.MutantKey;
@@ -26,13 +27,13 @@ final class ReturnRules {
      * @return true when a dispatch call replaced the plain return value
      */
     static boolean emitSchemata(MutationContext ctx, MethodVisitor mv, Type returnType,
-                                int lastOpcode, Object lastConstant) {
+                                PrecedingValue preceding) {
         if (TrueReturnsMutator.appliesTo(returnType)) {
             // Both boolean mutators act on the same return, so one call carries both ids.
-            int falseId = FalseReturnsMutator.isNoOp(lastOpcode)
+            int falseId = FalseReturnsMutator.isNoOp(preceding.opcode())
                     ? -1
                     : index(ctx, FalseReturnsMutator.ID);
-            int trueId = TrueReturnsMutator.isNoOp(lastOpcode)
+            int trueId = TrueReturnsMutator.isNoOp(preceding.opcode())
                     ? -1
                     : index(ctx, TrueReturnsMutator.ID);
             if (trueId < 0 && falseId < 0) {
@@ -46,7 +47,7 @@ final class ReturnRules {
         }
 
         if (EmptyReturnsMutator.appliesTo(returnType)) {
-            if (EmptyReturnsMutator.isNoOp(lastOpcode, lastConstant)) {
+            if (EmptyReturnsMutator.isNoOp(returnType, preceding)) {
                 return false;
             }
             int id = index(ctx, EmptyReturnsMutator.ID);
@@ -62,7 +63,7 @@ final class ReturnRules {
         }
 
         if (PrimitiveReturnsMutator.appliesTo(returnType)) {
-            if (PrimitiveReturnsMutator.isNoOp(lastOpcode)) {
+            if (PrimitiveReturnsMutator.isNoOp(preceding.opcode())) {
                 return false;
             }
             int id = index(ctx, PrimitiveReturnsMutator.ID);

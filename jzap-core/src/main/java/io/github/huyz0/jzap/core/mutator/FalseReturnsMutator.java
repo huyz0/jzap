@@ -33,8 +33,8 @@ public final class FalseReturnsMutator extends ReturnValueMutator {
     }
 
     @Override
-    protected boolean wouldBeNoOp(int opcode, Object constant) {
-        return isNoOp(opcode);   // the method already returns false here
+    protected boolean wouldBeNoOp(Type returnType, PrecedingValue preceding) {
+        return isNoOp(preceding.opcode());   // the method already returns false here
     }
 
     @Override
