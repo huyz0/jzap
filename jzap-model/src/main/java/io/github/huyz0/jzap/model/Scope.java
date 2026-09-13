@@ -1,5 +1,7 @@
 package io.github.huyz0.jzap.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.util.List;
 
 /**
@@ -64,6 +66,14 @@ public record Scope(
                 List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
+    /**
+     * Whether a changed class puts all of its mutants in scope, rather than only changed lines.
+     *
+     * <p>Not serialised: it is derived from {@link #granularity()}, and Jackson would otherwise
+     * write it as a {@code classGranularity} field that {@link ModelIo} then warns about as
+     * unknown when it reads its own output back.
+     */
+    @JsonIgnore
     public boolean isClassGranularity() {
         return "class".equals(granularity);
     }

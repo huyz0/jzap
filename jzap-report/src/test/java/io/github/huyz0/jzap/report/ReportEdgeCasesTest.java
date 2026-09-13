@@ -1,0 +1,222 @@
+package io.github.huyz0.jzap.report;
+
+import io.github.huyz0.jzap.model.AnalysisResult;
+import io.github.huyz0.jzap.model.Mutant;
+import io.github.huyz0.jzap.model.MutantKey;
+import io.github.huyz0.jzap.model.MutantStatus;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * The report cases a healthy run never produces.
+ *
+ * <p>A reporter is the only part of jzap a user always sees, and the runs worth reporting well
+ * are the unusual ones: an empty scope, a suite that was already red, a source tree that is not
+ * there. Each has to produce something a reader can act on rather than a blank page or a stack
+ * trace.
+ */
+class ReportEdgeCasesTest {
+
+    private static Mutant mutant(int line, MutantStatus status) {
+        return new Mutant(
+                new MutantKey("ex.Calc", "add", "(II)I", line, "MATH", 0),
+                ":app", "Calc.java", "replaced addition with subtraction",
+                status, status == MutantStatus.KILLED ? "ex.CalcTest#adds" : null,
+                status == MutantStatus.NO_COVERAGE ? 0 : 2,
+                status == MutantStatus.NO_COVERAGE ? 0 : 1, 12L);
+    }
+
+    private static AnalysisResult resultOf(List<Mutant> mutants, List<String> failingBaseline) {
+        return new AnalysisResult(mutants, Map.of("coverage", 10L), mutants.size(),
+                "all mutants in all target classes", "schemata", failingBaseline, 0);
+    }
+
+    private static String html(AnalysisResult result, Path dir, List<Path> sourceRoots)
+            throws Exception {
+        new HtmlReporter().write(result, new ReportContext(dir, sourceRoots, null, 80, 60));
+        return Files.readString(dir.resolve(HtmlReporter.FILE_NAME), StandardCharsets.UTF_8);
+    }
+
+    private static String console(AnalysisResult result, Path dir) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        new ConsoleReporter(new PrintStream(out, true, StandardCharsets.UTF_8))
+                .write(result, ReportContext.of(dir, List.of()));
+        return out.toString(StandardCharsets.UTF_8);
+    }
+
+    // ------------------------------------------------------------ empty runs
+
+    @Test
+    void anEmptyRunStillProducesAReadableHtmlReport(@TempDir Path dir) throws Exception {
+        String html = html(resultOf(List.of(), List.of()), dir, List.of());
+
+        assertTrue(html.contains("<html"), "it still has to be a page");
+        assertTrue(html.contains("</html>"));
+        assertTrue(html.contains("jzap mutation report"), html);
+    }
+
+    @Test
+    void anEmptyRunDoesNotClaimAScore(@TempDir Path dir) {
+        String text = console(resultOf(List.of(), List.of()), dir);
+
+        assertFalse(text.contains("NaN"),
+                "no mutants means no score, and NaN is not a report: " + text);
+    }
+
+    // ------------------------------------------------------------ a red baseline
+
+    @Test
+    void htmlWarnsAboutAFailingBaselineAndNamesTheTests(@TempDir Path dir) throws Exception {
+        String html = html(resultOf(List.of(mutant(4, MutantStatus.KILLED)),
+                List.of("ex.BrokenTest#alreadyFails", "ex.OtherTest#alsoFails")), dir, List.of());
+
+        assertTrue(html.contains("2 test(s) already fail"), html);
+        assertTrue(html.contains("ex.BrokenTest#alreadyFails"),
+                "a reader has to know which tests to fix: " + html);
+        assertTrue(html.contains("ex.OtherTest#alsoFails"), html);
+        assertTrue(html.contains("before trusting the verdicts"),
+                "and why it matters: " + html);
+    }
+
+    @Test
+    void aHealthyRunHasNoSuchWarning(@TempDir Path dir) throws Exception {
+        String html = html(resultOf(List.of(mutant(4, MutantStatus.KILLED)), List.of()),
+                dir, List.of());
+
+        assertFalse(html.contains("already fail"), html);
+    }
+
+    // ------------------------------------------------------------ ordering
+
+    @Test
+    void htmlPutsSurvivorsFirstThenUncoveredThenKilled(@TempDir Path dir) throws Exception {
+        String html = html(resultOf(List.of(
+                mutant(1, MutantStatus.KILLED),
+                mutant(2, MutantStatus.NO_COVERAGE),
+                mutant(3, MutantStatus.SURVIVED)), List.of()), dir, List.of());
+
+        // Searched in the body only: the stylesheet names every status class up front.
+        String body = html.substring(html.indexOf("</style>"));
+        int survived = body.indexOf("SURVIVED");
+        int uncovered = body.indexOf("NO_COVERAGE");
+        int killed = body.indexOf("KILLED");
+
+        assertTrue(survived < uncovered,
+                "survivors are the only rows that ask the reader to do something");
+        assertTrue(uncovered < killed, "and uncovered code is the next most actionable");
+    }
+
+    @Test
+    void withinOneStatusTheOrderIsBySourceLine(@TempDir Path dir) throws Exception {
+        String html = html(resultOf(List.of(
+                mutant(9, MutantStatus.SURVIVED),
+                mutant(4, MutantStatus.SURVIVED)), List.of()), dir, List.of());
+
+        assertTrue(html.indexOf(">4<") < html.indexOf(">9<"),
+                "a reader reads a file downwards: " + html);
+    }
+
+    // ------------------------------------------------------------ source rendering
+
+    @Test
+    void theSourceLineIsShownWhenItCanBeFound(@TempDir Path dir) throws Exception {
+        Path src = dir.resolve("src");
+        Files.createDirectories(src.resolve("ex"));
+        Files.writeString(src.resolve("ex/Calc.java"), """
+                package ex;
+                class Calc {
+                    int add(int a, int b) { return a + b; }
+                }
+                """);
+
+        String html = html(resultOf(List.of(mutant(3, MutantStatus.SURVIVED)), List.of()),
+                dir.resolve("out"), List.of(src));
+
+        assertTrue(html.contains("return a + b;"),
+                "the point of a source root is to show the code that changed: " + html);
+    }
+
+    @Test
+    void aMissingSourceTreeStillProducesTheReport(@TempDir Path dir) throws Exception {
+        String html = html(resultOf(List.of(mutant(3, MutantStatus.SURVIVED)), List.of()),
+                dir, List.of(dir.resolve("no-such-source")));
+
+        assertTrue(html.contains("SURVIVED"),
+                "the key and the verdict are the information; the source line is a convenience");
+    }
+
+    @Test
+    void sourceIsEscapedSoItCannotBreakOutOfThePage(@TempDir Path dir) throws Exception {
+        Path src = dir.resolve("src");
+        Files.createDirectories(src.resolve("ex"));
+        Files.writeString(src.resolve("ex/Calc.java"), """
+                package ex;
+                class Calc {
+                    String s = "<script>alert('x')</script> & \\"quoted\\"";
+                }
+                """);
+
+        String html = html(resultOf(List.of(mutant(3, MutantStatus.SURVIVED)), List.of()),
+                dir.resolve("out"), List.of(src));
+
+        assertFalse(html.contains("<script>alert"),
+                "source is untrusted input as far as the report is concerned: " + html);
+        assertTrue(html.contains("&lt;script&gt;"), html);
+        assertTrue(html.contains("&amp;"), html);
+    }
+
+    @Test
+    void theReportDirectoryIsCreatedIfItIsNotThere(@TempDir Path dir) throws Exception {
+        Path nested = dir.resolve("a/b/c");
+
+        html(resultOf(List.of(mutant(4, MutantStatus.KILLED)), List.of()), nested, List.of());
+
+        assertTrue(Files.isRegularFile(nested.resolve(HtmlReporter.FILE_NAME)));
+    }
+
+    // ------------------------------------------------------------ every status renders
+
+    @Test
+    void everyStatusAppearsInTheHtmlWithoutBreakingIt(@TempDir Path dir) throws Exception {
+        List<Mutant> all = List.of(
+                mutant(1, MutantStatus.KILLED),
+                mutant(2, MutantStatus.SURVIVED),
+                mutant(3, MutantStatus.NO_COVERAGE),
+                mutant(4, MutantStatus.TIMED_OUT),
+                mutant(5, MutantStatus.NON_VIABLE),
+                mutant(6, MutantStatus.RUN_ERROR));
+
+        String html = html(resultOf(all, List.of()), dir, List.of());
+
+        for (MutantStatus status : MutantStatus.values()) {
+            assertTrue(html.contains(status.name()), status + " is missing from " + html);
+        }
+        assertEquals(count(html, "<tr"), count(html, "</tr>"), "the table has to stay balanced");
+    }
+
+    @Test
+    void consoleReportsEveryStatusItWasGiven(@TempDir Path dir) {
+        String text = console(resultOf(List.of(
+                mutant(1, MutantStatus.KILLED),
+                mutant(2, MutantStatus.SURVIVED),
+                mutant(3, MutantStatus.TIMED_OUT)), List.of()), dir);
+
+        assertTrue(text.contains("SURVIVED") || text.contains("survived"), text);
+    }
+
+    private static long count(String text, String needle) {
+        return text.split(needle, -1).length - 1L;
+    }
+}

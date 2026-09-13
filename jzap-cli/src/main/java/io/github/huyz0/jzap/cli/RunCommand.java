@@ -13,10 +13,14 @@ import io.github.huyz0.jzap.report.Reporters;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Model.OptionSpec;
+import picocli.CommandLine.Spec;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 
 @Command(name = "run", description = "Analyse mutants and write reports.")
@@ -153,33 +157,10 @@ final class RunCommand implements Callable<Integer> {
      * Hands this invocation to the resident jzap, starting one if there is none.
      *
      * <p>The daemon runs the very same command with {@code --daemon} dropped, so behaviour cannot
-     * drift between the two paths: there is only one implementation.
+     * drift between the two paths: there is only one implementation of a run.
      */
     private int runInDaemon() {
-        List<String> forwarded = new ArrayList<>(List.of("run",
-                "-m", modelOptions.modelFile.toAbsolutePath().toString(),
-                "-o", reportDir.toAbsolutePath().toString()));
-        if (modelOptions.from != null) {
-            forwarded.addAll(List.of("--from", modelOptions.from));
-        }
-        if (modelOptions.to != null) {
-            forwarded.addAll(List.of("--to", modelOptions.to));
-        }
-        if (cacheDir != null) {
-            forwarded.addAll(List.of("--cache-dir", cacheDir.toString()));
-        }
-        if (threads != null) {
-            forwarded.addAll(List.of("--threads", threads.toString()));
-        }
-        if (engine != null) {
-            forwarded.addAll(List.of("--engine", engine));
-        }
-        if (threshold != null) {
-            forwarded.addAll(List.of("--threshold", threshold.toString()));
-        }
-        if (quiet) {
-            forwarded.add("--quiet");
-        }
+        List<String> forwarded = forwardedArguments();
 
         var response = Daemon.run(modelOptions.modelFile, forwarded);
         if (response.isEmpty()) {
@@ -198,6 +179,51 @@ final class RunCommand implements Callable<Integer> {
         System.out.print(response.get().output());
         return response.get().exitCode();
     }
+
+    /**
+     * The command line to send to the daemon: this one, rebuilt from what was actually matched.
+     *
+     * <p>Rebuilt rather than listed by hand. A hand-written list has to be extended for every new
+     * option, and when it is not the option is silently ignored -- the run happens, reports are
+     * written, and nothing says that what was asked for was dropped. That had already happened to
+     * {@code --dry-run}, {@code --fail-on-survivors}, {@code --reporters} and every scope and
+     * filter flag on {@link ModelOptions}; {@code --fail-on-survivors} going missing turns a
+     * failing build green.
+     *
+     * <p>Two options cannot be passed through as they were given. {@code --daemon} is dropped, or
+     * the daemon would hand the work to itself; and the model and report paths are made absolute,
+     * because the daemon's working directory is wherever it was started rather than the caller's.
+     */
+    private List<String> forwardedArguments() {
+        List<String> forwarded = new ArrayList<>();
+        forwarded.add("run");
+        forwarded.addAll(List.of("-m", modelOptions.modelFile.toAbsolutePath().toString()));
+        forwarded.addAll(List.of("-o", reportDir.toAbsolutePath().toString()));
+
+        for (OptionSpec option : spec.commandLine().getParseResult().matchedOptions()) {
+            String name = option.longestName();
+            if (NOT_FORWARDED.contains(name)) {
+                continue;
+            }
+            if (option.type() == boolean.class || option.type() == Boolean.class) {
+                if (Boolean.TRUE.equals(option.getValue())) {
+                    forwarded.add(name);
+                }
+                continue;
+            }
+            for (String value : option.stringValues()) {
+                forwarded.addAll(List.of(name, value));
+            }
+        }
+        return forwarded;
+    }
+
+    /** Options the daemon must not be given, or must be given differently. */
+    private static final Set<String> NOT_FORWARDED = Set.of(
+            "--daemon", "--project-model", "--report-dir");
+
+    @Spec
+    CommandSpec spec;
 
     private int exitCode(AnalysisResult result) {
         if (threshold != null && result.mutationScore() < threshold) {
