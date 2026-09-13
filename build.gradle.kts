@@ -1,5 +1,6 @@
 plugins {
     java
+    jacoco
 }
 
 allprojects {
@@ -9,6 +10,7 @@ allprojects {
 
 subprojects {
     apply(plugin = "java-library")
+    apply(plugin = "jacoco")
 
     repositories { mavenCentral() }
 
@@ -24,6 +26,11 @@ subprojects {
 
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
+        extensions.configure<JacocoTaskExtension> {
+            // The forked analysis JVMs are separate processes; only this JVM is measured.
+            // coverageReport explains what that costs and which classes it excludes.
+            isEnabled = true
+        }
         testLogging {
             events("failed", "skipped")
             exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
@@ -52,4 +59,97 @@ tasks.register<Exec>("mavenSmokeTest") {
     workingDir = projectDir
     commandLine("bash", file("jzap-maven/smoke-test.sh").absolutePath,
         project(":jzap-cli").layout.buildDirectory.dir("install/jzap/lib").get().asFile.absolutePath)
+}
+
+/**
+ * Coverage across every module at once.
+ *
+ * <p>Per-module coverage would be badly misleading here. The tests that exercise most of
+ * jzap-core live in jzap-e2e, because what they assert is a whole analysis of a real fixture:
+ * measuring jzap-core against only its own test source set would report a fraction of what is
+ * actually covered. So every module's execution data is unioned against every module's classes.
+ *
+ * <h2>What is measured</h2>
+ *
+ * jzap's own production code, and nothing else. The fixtures under fixtures/ are deliberately
+ * excluded: they are the code jzap mutates, the input to the tool rather than the tool, and they
+ * execute only inside the analysis JVMs jzap forks. Counting them put 715 lines of sample code
+ * in the denominator, 680 of them generated, and moved the headline figure by fifteen points
+ * while saying nothing about whether jzap is tested.
+ *
+ * <h2>What cannot be measured this way</h2>
+ *
+ * JaCoCo instruments the JVM it is attached to, and jzap's whole design is to run the user's
+ * tests in JVMs it forks. Two things fall outside it, and both are excluded from the ratio
+ * rather than counted as zero, which would put a false floor under every number:
+ *
+ * <ul>
+ *   <li><b>io.github.huyz0.jzap.minion</b> exists only to run inside those forks. MinionIntegrationTest
+ *       drives a live one over the wire, so it is tested; it cannot be observed from here.
+ *       Attaching a second JaCoCo agent to each minion would change the thing under test --
+ *       the minion asserts it is dependency-free, and its class-redefinition path is exactly
+ *       what another bytecode-rewriting agent interferes with.
+ *   <li><b>JzapAgent and OverrideTransformer</b> need a real {@code Instrumentation}, which only
+ *       a JVM started with {@code -javaagent} has. The rest of io.github.huyz0.jzap.agent is ordinary static
+ *       state and pure functions, and is measured.
+ * </ul>
+ */
+val coverageExcludes = listOf(
+    // Runs only inside forked JVMs, or needs a real -javaagent Instrumentation; see above.
+    "io/github/huyz0/jzap/minion/**",
+    "io/github/huyz0/jzap/agent/JzapAgent*",
+    "io/github/huyz0/jzap/agent/OverrideTransformer*",
+)
+
+/** jzap's own modules. Fixtures and tools are not the product and are not measured. */
+val measuredProjects = listOf(
+    "jzap-model", "jzap-core", "jzap-agent", "jzap-wire", "jzap-minion",
+    "jzap-git", "jzap-report", "jzap-cli", "jzap-gradle",
+).map { project(":$it") }
+
+/** Every module with tests, whose execution data feeds the report. */
+val testedProjects = measuredProjects + project(":jzap-e2e")
+
+val coverageReport = tasks.register<JacocoReport>("coverageReport") {
+    group = "verification"
+    description = "Unions every module's coverage into one report."
+
+    dependsOn(testedProjects.map { "${it.path}:test" })
+
+    executionData.setFrom(files(testedProjects.map {
+        it.layout.buildDirectory.file("jacoco/test.exec")
+    }).filter { it.exists() })
+
+    sourceDirectories.setFrom(files(measuredProjects.map { it.file("src/main/java") }))
+    classDirectories.setFrom(files(measuredProjects.map {
+        it.layout.buildDirectory.dir("classes/java/main")
+    }).asFileTree.matching { coverageExcludes.forEach { pattern -> exclude(pattern) } })
+
+    reports {
+        xml.required.set(true)
+        xml.outputLocation.set(layout.buildDirectory.file("reports/coverage/coverage.xml"))
+        html.required.set(true)
+        html.outputLocation.set(layout.buildDirectory.dir("reports/coverage/html"))
+        csv.required.set(false)
+    }
+}
+
+/** Prints the aggregate ratios, because a report nobody reads is not a check. */
+tasks.register("coverage") {
+    group = "verification"
+    description = "Prints aggregate line and branch coverage."
+    dependsOn(coverageReport)
+    val xml = coverageReport.get().reports.xml.outputLocation
+    doLast {
+        val text = xml.get().asFile.readText()
+        // The report-wide totals are the last counter elements in the document.
+        val totals = Regex("""<counter type="(\w+)" missed="(\d+)" covered="(\d+)"/>""")
+            .findAll(text).toList().takeLast(6)
+        totals.forEach { m ->
+            val (kind, missed, covered) = m.destructured
+            val total = missed.toInt() + covered.toInt()
+            val pct = if (total == 0) 0.0 else covered.toInt() * 100.0 / total
+            println(String.format("%-12s %6.2f%%  (%d/%d)", kind, pct, covered.toInt(), total))
+        }
+    }
 }

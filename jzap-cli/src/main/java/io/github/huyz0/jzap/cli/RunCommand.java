@@ -8,6 +8,7 @@ import io.github.huyz0.jzap.model.ModuleModel;
 import io.github.huyz0.jzap.model.MutantStatus;
 import io.github.huyz0.jzap.model.ProjectModel;
 import io.github.huyz0.jzap.report.ReportContext;
+import io.github.huyz0.jzap.report.Reporter;
 import io.github.huyz0.jzap.report.Reporters;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -113,6 +114,19 @@ final class RunCommand implements Callable<Integer> {
             }
         }
 
+        // Resolved before the analysis, not after it. A typo in --reporters used to surface as
+        // an exception once every mutant had already been run, and picocli turned that into exit
+        // code 1 -- the code that means "your mutation score is below the threshold". A usage
+        // error has to be told apart from a verdict, and it has to fail before the work.
+        List<String> reporterIds = reporters != null ? reporters : model.reporters();
+        List<Reporter> resolvedReporters;
+        try {
+            resolvedReporters = new Reporters(System.out).resolve(reporterIds);
+        } catch (IllegalArgumentException e) {
+            System.err.println("jzap: " + e.getMessage());
+            return EXIT_USAGE;
+        }
+
         AnalysisResult result;
         try {
             result = new AnalysisEngine(model, new ConsoleListener(quiet)).analyse(changed);
@@ -121,10 +135,8 @@ final class RunCommand implements Callable<Integer> {
             return EXIT_FAILED;
         }
 
-        List<String> reporterIds = reporters != null ? reporters : model.reporters();
         ReportContext context = ReportContext.of(reportDir, sourceRoots(model));
-        new Reporters(System.out).resolve(reporterIds)
-                .forEach(reporter -> reporter.write(result, context));
+        resolvedReporters.forEach(reporter -> reporter.write(result, context));
 
         if (result.reusedFromCache() > 0) {
             System.out.println(result.reusedFromCache() + " of " + result.mutants().size()

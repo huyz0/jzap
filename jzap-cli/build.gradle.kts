@@ -21,6 +21,22 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
+/**
+ * The CLI's tests drive the commands in this JVM, against the smallest real fixture.
+ *
+ * <p>Exit codes, option forwarding and the diagnostics for a missing or malformed model are what
+ * a user actually meets first, and until this existed they were only covered by the end-to-end
+ * tests that invoke the installed binary as a subprocess -- which proves the binary works but
+ * cannot see inside it, and leaves every option-handling branch unexercised.
+ */
+val sampleDescriptor = project(":fixtures:sample-java")
+    .layout.buildDirectory.file("fixture.properties")
+
+tasks.test {
+    dependsOn(":fixtures:sample-java:writeFixtureDescriptor")
+    systemProperty("jzap.fixture.descriptor", sampleDescriptor.get().asFile.absolutePath)
+}
+
 application {
     mainClass.set("io.github.huyz0.jzap.cli.Main")
     applicationName = "jzap"
