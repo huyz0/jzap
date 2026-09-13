@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 
 /** Framed read/write over a socket, used identically by both ends. */
 public final class Channel implements AutoCloseable {
@@ -68,7 +69,7 @@ public final class Channel implements AutoCloseable {
 
     public void writeString(String s) {
         try {
-            byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
             out.writeInt(bytes.length);
             out.write(bytes);
         } catch (IOException e) {
@@ -113,7 +114,7 @@ public final class Channel implements AutoCloseable {
         int len = in.readInt();
         byte[] b = new byte[len];
         in.readFully(b);
-        return new String(b, java.nio.charset.StandardCharsets.UTF_8);
+        return new String(b, StandardCharsets.UTF_8);
     }
 
     public byte[] readBytes() throws IOException {

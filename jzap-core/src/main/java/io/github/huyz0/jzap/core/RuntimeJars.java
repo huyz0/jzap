@@ -71,10 +71,22 @@ public final class RuntimeJars {
     }
 
     /** Wraps a class directory in a jar with the agent manifest, if it is not already one. */
-    private static Path asAgentJar(Path agentPath) {
+    static Path asAgentJar(Path agentPath) {
         if (Files.isRegularFile(agentPath)) {
             return agentPath;
         }
+        return packageAsAgentJar(agentPath);
+    }
+
+    /**
+     * Packages a directory of classes into a jar carrying the agent manifest.
+     *
+     * <p>Needed because {@code -javaagent} will only accept a jar, and a jar will only be treated
+     * as an agent if its manifest says so. Running from class directories is not an edge case:
+     * it is how every test and every IDE run works, so this path has to be as reliable as the
+     * packaged one.
+     */
+    static Path packageAsAgentJar(Path agentPath) {
         try {
             Path jar = Files.createTempFile("jzap-agent-", ".jar");
             Manifest manifest = new Manifest();
