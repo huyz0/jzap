@@ -226,12 +226,25 @@ differentially tested against.
 
 | Missing | Milestone |
 |---|---|
-| Block-granularity coverage | M10 |
 
 Also absent: Tier C corpora (parity runs against the hand-written and generated fixtures only),
 and the JUnit 4 and TestNG adapters behind the `jzap-testkit` SPI. Kotest works at spec
 granularity; per-leaf selection, its isolation-mode matrix, and the coroutine fixtures remain
 outstanding from M16b.
+
+## Measured and deliberately not built
+
+Two milestones were closed by measurement rather than by code, and the numbers are in
+[delivery-plan.md](delivery-plan.md):
+
+- **Block-granularity coverage (M10).** Its purpose is to select fewer tests per mutant. Across all
+  four fixtures the tests actually *run* per mutant are already 1.0-1.11: kill-test-first ordering
+  and early exit reach the floor first. It would still help a project with broad integration tests
+  and many survivors, where every covering test runs because none of them kills — and that is the
+  condition to check before building it.
+- **The Kotlin IR frontend (M17).** The bytecode path already produces clean Kotlin mutants with
+  correct source lines. An IR frontend would improve them at the margins and couple jzap hard to
+  compiler internals, which is what pins mutflow to a single Kotlin version.
 
 ## Known limitations of what does exist
 

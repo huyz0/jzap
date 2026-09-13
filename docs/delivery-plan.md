@@ -436,9 +436,32 @@ invocations — soundly.
 
 ## M10 · Coverage-driven selection, ordering, and hit-probe timeouts
 
-**Two of three done.** Kill-test-first ordering from the cache, and hit-probe loop detection as
-the primary hang signal. Coverage remains at **line** granularity; block granularity with
-exception-correct attribution is the one part still outstanding.
+**Two of three done; the third measured and deliberately not built.** Kill-test-first ordering from
+the cache, and hit-probe loop detection as the primary hang signal. Coverage is keyed by
+**(class, method, line)** — finer than the (class, line) it started as, which M16 forced and which
+Java lambdas needed anyway — but not by basic block.
+
+**Why block granularity was not built.** Its purpose is to select fewer tests per mutant. Measured
+across all four fixtures, the tests actually *run* per mutant are already at the floor:
+
+| Fixture | covering tests per mutant | tests run per mutant |
+|---|---|---|
+| bench (1080 mutants) | 1.00 | 1.00 |
+| Kotlin | 1.00 | 1.00 |
+| multi-module | 1.00 | 1.00 |
+| Java sample | 1.67 | 1.11 |
+
+Kill-test-first ordering and early exit already reach what finer coverage would aim at: the killing
+test runs first and nothing after it runs at all. Block granularity would still narrow the
+*covering* set, and that matters in one specific case this repository has no fixture for — a
+project with broad integration tests and many surviving mutants, where every covering test runs
+because none of them kills. The honest statement is that the benefit is bounded by
+(survivors x covering tests saved), and on everything measurable here that product is near zero.
+
+Building it would mean a third cache-format change and a block-numbering scheme that two separate
+bytecode passes have to agree on exactly — the same class of hazard as the schemata ordinals, for a
+benefit that cannot currently be demonstrated. It is recorded here so the next person reaches for it
+when they have a project where the numbers above look different, rather than on principle.
 
 Loop detection counts back edges rather than watching the clock. The limit is ten times what the
 unmutated code needed on the same tests, measured during the coverage run, with a floor so code
@@ -840,7 +863,17 @@ fixtures and the measurements rather than an assumption that the platform makes 
 
 ## M17 · Kotlin IR frontend (optional)
 
-**Not started.**
+**Not built, deliberately.** The plan marked it optional and gated on Spike C, and the bytecode work
+of M15 and M16 answered the question it was meant to answer: Kotlin mutants are clean, inline
+function bodies are mutated through their call sites, and the reported source lines are correct
+because the SMAP table gives them exactly.
+
+What the IR frontend would add is mutant *quality* at the margins — better arid-node decisions, and
+descriptions phrased in Kotlin rather than in bytecode terms. What it would cost is a hard coupling
+to compiler internals: mutflow, the closest existing example, is pinned to a single Kotlin version.
+That is a poor trade while the bytecode path produces clean results, and it is a good trade the day
+someone finds a construct the bytecode filters cannot distinguish. Nothing in the current fixtures
+is that construct.
 
 **Goal.** Source-faithful mutant selection and description via a K2 compiler plugin,
 degrading cleanly when absent.
