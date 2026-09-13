@@ -139,6 +139,27 @@ excluded from all figures and reported separately.
 5 runs per scenario. Report **median with min–max range**, never the best run. A
 single-number claim with no range is not a result.
 
+#### Comparing two builds of jzap on a machine that is busy
+
+The controls above are what a published number needs. A regression check after a
+refactor is a different question, and on a loaded developer machine it cannot be
+answered by running the harness twice and comparing reports: every figure moves
+together. The tell is PIT, which no jzap change can affect — when its median goes
+from 28s to 92s with a 55–119s range, the report measures the machine.
+
+Run the two builds alternately instead, so both meet the same load. Two things to
+know about that, both measured here rather than assumed:
+
+- **Alternate which build goes first.** Holding the order fixed penalises whichever
+  runs second if load drifts during the loop, and three pairs in a row then agree on
+  a difference that does not exist.
+- **Even alternating, the second run of a pair is faster** — every pair, both
+  directions, on the order of a second out of ten. Page cache and a warm JIT for the
+  fixture's own classes, not the build under test. So compare medians across pairs,
+  and treat any difference smaller than that ordering effect as unmeasured. Under
+  load 17 on a 20-core machine the floor was about 10%: enough to catch a phase
+  regression, not enough to see a few percent either way.
+
 ### Scenarios
 
 | # | Scenario | What it isolates |
