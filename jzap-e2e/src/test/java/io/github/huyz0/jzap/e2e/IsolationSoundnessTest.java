@@ -22,8 +22,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
  * is not something to assume — it is measured here, by running each fixture both ways and comparing
  * every verdict.
  *
- * <p>The schemata engine makes this sharper, not softer: it no longer redefines a class per mutant,
- * so a JVM lives through more mutants than it used to.
+ * <p>The stakes rose twice. The schemata engine no longer redefines a class per mutant, so a JVM
+ * lives through more mutants than it used to; and profiling then showed that recycling every 100
+ * mutants cost 2.9x on the execution phase, because each fresh JVM throws away the JIT warmup the
+ * previous mutants paid for. The default is now 1000. This gate is what makes that defensible
+ * rather than optimistic.
  */
 class IsolationSoundnessTest {
 
@@ -39,7 +42,8 @@ class IsolationSoundnessTest {
 
     private static void assertReuseIsSound(Fixture fixture, String what) {
         Map<String, String> isolated = verdicts(fixture.model(Scope.all(), 1));
-        Map<String, String> reused = verdicts(fixture.model(Scope.all(), 100));
+        // The default, not a number chosen here: the gate has to cover what users actually run.
+        Map<String, String> reused = verdicts(fixture.model(Scope.all()));
 
         assertFalse(isolated.isEmpty(), "no mutants were analysed for " + what);
         assertEquals(isolated, reused,

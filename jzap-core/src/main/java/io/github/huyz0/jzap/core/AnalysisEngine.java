@@ -30,6 +30,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The reference engine: one mutant at a time, in a forked JVM, with coverage-driven test
@@ -88,6 +89,19 @@ public final class AnalysisEngine {
     private final MutationEngine mutation;
     private final AtomicInteger reusedFromCache = new AtomicInteger();
 
+    /**
+     * Where the execution phase's time went, beyond running tests.
+     *
+     * <p>Reported so the next optimisation is chosen by measurement. Every one so far was: the
+     * schemata engine because redefinition dominated, batching because launcher startup did.
+     */
+    private final AtomicInteger minionsStarted = new AtomicInteger();
+    private final AtomicLong minionStartupNanos = new AtomicLong();
+    private final AtomicLong schemataNanos = new AtomicLong();
+    private final AtomicLong installNanos = new AtomicLong();
+    private final AtomicLong runTestsNanos = new AtomicLong();
+    private final AtomicLong activateNanos = new AtomicLong();
+
     public AnalysisEngine(ProjectModel model, Listener listener) {
         this.model = model;
         this.listener = listener == null ? Listener.SILENT : listener;
@@ -134,6 +148,12 @@ public final class AnalysisEngine {
         long executionStart = System.nanoTime();
         List<Mutant> results = execute(inScope, classes, coverage, cache);
         timings.put("execution", millisSince(executionStart));
+        timings.put("executionMinionStartup", minionStartupNanos.get() / 1_000_000L);
+        timings.put("executionMinionsStarted", (long) minionsStarted.get());
+        timings.put("executionSchemataBuild", schemataNanos.get() / 1_000_000L);
+        timings.put("executionSchemataInstall", installNanos.get() / 1_000_000L);
+        timings.put("executionRunTests", runTestsNanos.get() / 1_000_000L);
+        timings.put("executionActivate", activateNanos.get() / 1_000_000L);
 
         cache.write();
         return new AnalysisResult(
@@ -438,7 +458,7 @@ public final class AnalysisEngine {
         }
         Queue<List<Mutant>> queue = new ConcurrentLinkedQueue<>(byClass.values());
 
-        int threads = Math.max(1, Math.min(model.threads(), byClass.size()));
+        int threads = workersFor(covered, coverage, byClass.size());
         listener.phase("execution", covered.size() + " mutants on " + threads + " thread(s)");
 
         Collection<Mutant> analysed = new ConcurrentLinkedQueue<>();
@@ -451,6 +471,53 @@ public final class AnalysisEngine {
         results.addAll(analysed);
         return results;
     }
+
+    /**
+     * How many analysis JVMs are worth starting for this much work.
+     *
+     * <p>Not simply the requested thread count. Starting one costs around a quarter of a second,
+     * and it starts cold -- the first mutants it runs pay for JIT warmup the previous JVM had
+     * already paid for. Once the per-mutant cost fell to about 1.5 ms, twenty workers on a
+     * two-second job measured *slower* than one: 4.06s against 3.20s, because the run was mostly
+     * twenty JVM startups.
+     *
+     * <p>So the cap is the work itself. One extra worker per {@code WORK_PER_WORKER_MILLIS} of
+     * estimated work, which is roughly twice what starting one costs, and never more workers than
+     * there are classes to give them.
+     */
+    private int workersFor(List<Mutant> covered, Coverage coverage, int classCount) {
+        int requested = Math.max(1, Math.min(model.threads(), classCount));
+        if (requested == 1) {
+            return 1;
+        }
+        long estimatedMillis = 0;
+        for (Mutant mutant : covered) {
+            List<String> selected = coverage.selectFor(mutant);
+            // The first test decides most mutants, so it is what a mutant usually costs.
+            long testMillis = selected.isEmpty()
+                    ? 0
+                    : coverage.durations().getOrDefault(selected.get(0), 0L);
+            estimatedMillis += testMillis + PER_MUTANT_OVERHEAD_MILLIS;
+        }
+        int justified = (int) Math.max(1, estimatedMillis / WORK_PER_WORKER_MILLIS);
+        int workers = Math.min(requested, justified);
+        if (workers < requested) {
+            listener.phase("execution", "using " + workers + " of " + requested
+                    + " requested thread(s): about " + estimatedMillis + "ms of work does not "
+                    + "justify more analysis JVMs, which cost roughly "
+                    + JVM_STARTUP_MILLIS + "ms each to start cold");
+        }
+        return workers;
+    }
+
+    /** Rough cost of running one mutant's tests once a JVM is warm, measured on the bench fixture. */
+    private static final long PER_MUTANT_OVERHEAD_MILLIS = 2;
+
+    /** Rough cost of starting an analysis JVM and getting it warm. */
+    private static final long JVM_STARTUP_MILLIS = 250;
+
+    /** Work that justifies one more worker: about twice what starting one costs. */
+    private static final long WORK_PER_WORKER_MILLIS = 2 * JVM_STARTUP_MILLIS;
 
     private void runInParallel(int threads, Queue<List<Mutant>> queue,
                                Map<String, ClassUnderTest> classes, Coverage coverage,
@@ -557,9 +624,11 @@ public final class AnalysisEngine {
             if (target == null) {
                 return;
             }
+            long start = System.nanoTime();
             try {
                 SchemataTransformer.Result result =
                         SchemataTransformer.transform(target.bytes(), batch);
+                schemataNanos.addAndGet(System.nanoTime() - start);
                 if (result.indices().isEmpty()) {
                     return;
                 }
@@ -618,9 +687,7 @@ public final class AnalysisEngine {
                     minion = minionFor(module);
                     if (schemataIndex != null) {
                         installSchemataIfNeeded(minion, module.id());
-                        minion.activateMutant(schemataIndex);
                     } else {
-                        minion.activateMutant(MutantSwitch.NONE);
                         minion.setOverride(mutant.key().className(), mutated);
                     }
                 } catch (WireException | IllegalStateException e) {
@@ -631,9 +698,12 @@ public final class AnalysisEngine {
                     break;
                 }
                 try {
+                    long runStart = System.nanoTime();
                     MinionProcess.MutantOutcome outcome = minion.runTests(group.getValue(),
                             coverage.iterationLimitFor(group.getValue()),
-                            coverage.timeoutFor(group.getValue(), model));
+                            coverage.timeoutFor(group.getValue(), model),
+                            schemataIndex != null ? schemataIndex : MutantSwitch.NONE);
+                    runTestsNanos.addAndGet(System.nanoTime() - runStart);
                     testsRun += outcome.testsRun();
                     sinceRestart++;
                     MutantStatus fromGroup = switch (outcome.code()) {
@@ -643,10 +713,9 @@ public final class AnalysisEngine {
                         case Wire.OUTCOME_RUNAWAY -> MutantStatus.TIMED_OUT;
                         default -> MutantStatus.RUN_ERROR;
                     };
-                    if (schemataIndex != null) {
-                        // The schemata class stays installed; only the switch is reset.
-                        minion.activateMutant(MutantSwitch.NONE);
-                    } else {
+                    if (schemataIndex == null) {
+                        // The schemata class stays installed between mutants; a redefined one has
+                        // to be put back.
                         minion.clearOverrides();
                         minionsHoldingSchemata.remove(module.id());
                     }
@@ -680,15 +749,20 @@ public final class AnalysisEngine {
             if (existing != null && existing.isAlive()) {
                 return existing;
             }
+            long start = System.nanoTime();
             MinionProcess started = MinionProcess.start(module, jars, true);
-            started.listTests(module.testClassPaths());
+            started.prepareTests(module.testClassPaths());
+            minionStartupNanos.addAndGet(System.nanoTime() - start);
+            minionsStarted.incrementAndGet();
             minions.put(module.id(), started);
             return started;
         }
 
         private void installSchemataIfNeeded(MinionProcess minion, String moduleId) {
             if (minionsHoldingSchemata.add(moduleId)) {
+                long start = System.nanoTime();
                 minion.setOverride(installedClass, installedSchemata);
+                installNanos.addAndGet(System.nanoTime() - start);
             }
         }
 

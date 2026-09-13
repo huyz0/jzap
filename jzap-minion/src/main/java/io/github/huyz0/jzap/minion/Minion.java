@@ -59,6 +59,7 @@ public final class Minion {
             switch (command) {
                 case Wire.CMD_INIT_COVERAGE -> initCoverage(channel);
                 case Wire.CMD_LIST_TESTS -> listTests(channel);
+                case Wire.CMD_PREPARE_TESTS -> prepareTests(channel);
                 case Wire.CMD_RUN_TEST_COVERAGE -> runTestForCoverage(channel);
                 case Wire.CMD_SET_OVERRIDE -> setOverride(channel);
                 case Wire.CMD_CLEAR_OVERRIDES -> clearOverrides(channel);
@@ -105,6 +106,26 @@ public final class Minion {
             channel.flush();
         } catch (RuntimeException | LinkageError e) {
             error(channel, "test discovery failed: " + describe(e));
+        }
+    }
+
+    /**
+     * Creates the harness without discovering anything.
+     *
+     * <p>The execution phase addresses tests by unique id, so it needs a launcher and a classpath
+     * and not a test plan. Discovering one anyway cost a fifth of a second per analysis JVM.
+     */
+    private void prepareTests(Channel channel) throws IOException {
+        int rootCount = channel.readInt();
+        List<Path> roots = new ArrayList<>(rootCount);
+        for (int i = 0; i < rootCount; i++) {
+            roots.add(Path.of(channel.readString()));
+        }
+        try {
+            harness = new TestHarness(roots);
+            respondOk(channel);
+        } catch (RuntimeException | LinkageError e) {
+            error(channel, "cannot prepare the test harness: " + describe(e));
         }
     }
 
@@ -158,17 +179,22 @@ public final class Minion {
     private void runTests(Channel channel) throws IOException {
         int count = channel.readInt();
         long iterationLimit = channel.readLong();
+        int mutantIndex = channel.readInt();
         List<String> tests = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             tests.add(channel.readString());
         }
         requireHarness();
         TestHarness.Outcome outcome;
+        // Activating, running and resetting in one command rather than three: on the bench fixture
+        // the two extra round trips were a fifth of the execution phase.
+        MutantSwitch.activate(mutantIndex);
         LoopGuard.arm(iterationLimit);
         try {
             outcome = harness.run(tests, true);
         } finally {
             LoopGuard.disarm();
+            MutantSwitch.deactivate();
         }
 
         byte code;

@@ -138,6 +138,23 @@ public final class MinionProcess implements AutoCloseable {
         }
     }
 
+    /**
+     * Makes the analysis JVM ready to run tests, without discovering them.
+     *
+     * <p>Discovery is what the coverage phase is for. Repeating it in every analysis JVM cost a
+     * fifth of a second each and produced a list nothing read.
+     */
+    public void prepareTests(List<String> testClassPaths) {
+        channel.readTimeout(120_000);
+        channel.writeByte(Wire.CMD_PREPARE_TESTS);
+        channel.writeInt(testClassPaths.size());
+        for (String root : testClassPaths) {
+            channel.writeString(root);
+        }
+        channel.flush();
+        expectOk("preparing the test harness");
+    }
+
     public TestCoverage runTestForCoverage(String testId, int timeoutMillis) {
         channel.readTimeout(timeoutMillis);
         channel.writeByte(Wire.CMD_RUN_TEST_COVERAGE);
@@ -198,12 +215,18 @@ public final class MinionProcess implements AutoCloseable {
      *                       on how fast the machine is.
      * @param timeoutMillis  wall-clock backstop, for the cases the guard cannot see: a mutant
      *                       that blocks rather than loops, or code that catches Throwable
+     * @param mutantIndex    schemata mutant to activate for this run, or
+     *                       {@link io.github.huyz0.jzap.agent.MutantSwitch#NONE} when the mutant was installed
+     *                       by redefinition instead. Carried here so one round trip does what three
+     *                       used to.
      */
-    public MutantOutcome runTests(List<String> testIds, long iterationLimit, int timeoutMillis) {
+    public MutantOutcome runTests(List<String> testIds, long iterationLimit, int timeoutMillis,
+                                  int mutantIndex) {
         channel.readTimeout(timeoutMillis);
         channel.writeByte(Wire.CMD_RUN_TESTS);
         channel.writeInt(testIds.size());
         channel.writeLong(iterationLimit);
+        channel.writeInt(mutantIndex);
         for (String id : testIds) {
             channel.writeString(id);
         }

@@ -40,7 +40,7 @@ class ModelIoTest {
         assertEquals(ScopeKind.ALL, m.scope().kind());
         assertEquals("line", m.scope().granularity());
         assertEquals(List.of("console", "json"), m.reporters());
-        assertEquals(100, m.maxMutantsPerMinion());
+        assertEquals(1000, m.maxMutantsPerMinion());
         assertTrue(m.threads() >= 1);
     }
 

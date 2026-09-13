@@ -19,7 +19,12 @@ import java.util.List;
  * @param timeoutFactor multiplier applied to a test's baseline duration before declaring a hang
  * @param timeoutConstMillis constant added to the timeout, to absorb scheduling noise
  * @param maxMutantsPerMinion mutants analysed in one forked JVM before it is recycled, which
- *                      bounds state drift between mutants
+ *                      bounds state drift between mutants. Defaults to 1000: recycling is a hedge
+ *                      against state drift that has never been observed, including on a fixture
+ *                      written to leak, and the hedge was measured costing 2.9x on the execution
+ *                      phase at the previous default of 100 -- because a fresh JVM throws away the
+ *                      JIT warmup the previous mutants paid for. Set it to 1 for a JVM per mutant,
+ *                      which is the sound reference the soundness gate compares against.
  * @param engine        {@code schemata} compiles every mutant of a class in at once and selects
  *                      one with a field write; {@code naive} redefines the class per mutant and is
  *                      kept as the reference implementation every optimisation is compared against
@@ -57,7 +62,7 @@ public record ProjectModel(
         threads = threads <= 0 ? Runtime.getRuntime().availableProcessors() : threads;
         timeoutFactor = timeoutFactor <= 0 ? 1.5 : timeoutFactor;
         timeoutConstMillis = timeoutConstMillis <= 0 ? 4000L : timeoutConstMillis;
-        maxMutantsPerMinion = maxMutantsPerMinion <= 0 ? 100 : maxMutantsPerMinion;
+        maxMutantsPerMinion = maxMutantsPerMinion <= 0 ? 1000 : maxMutantsPerMinion;
         engine = engine == null || engine.isBlank() ? "schemata" : engine;
         if (!engine.equals("schemata") && !engine.equals("naive")) {
             throw new IllegalArgumentException(
