@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -64,6 +65,58 @@ class PatchScopeTest {
                 " keep"));
 
         assertTrue(changed.isEmpty(), "removed code cannot hold a mutant");
+    }
+
+    @Test
+    void anAddedLineThatLooksLikeAFileHeaderIsContentNotAHeader() {
+        // "++ i;" added to a file appears in the diff as "+++ i;". Matching file headers by
+        // prefix anywhere in the patch reads that as the start of a new file, which silently
+        // moves every later added line onto a path that does not exist -- so the real file's
+        // changed lines are never analysed. Inside a hunk, a line is content.
+        ChangedLines changed = PatchScope.parse(List.of(
+                "--- a/ex/A.java",
+                "+++ b/ex/A.java",
+                "@@ -1,2 +1,3 @@",
+                " keep",
+                "+++ i;",
+                " keep"));
+
+        assertTrue(changed.containsLine("ex/A.java", 2), "the added line is line 2 of ex/A.java");
+        assertEquals(List.of("ex/A.java"), List.copyOf(changed.paths()));
+    }
+
+    @Test
+    void anEmptyContextLineStillAdvancesThePosition() {
+        // A context line that is blank is written as a single space, and anything that strips
+        // trailing whitespace leaves it empty. Skipping it would shift every line number after it
+        // in the hunk.
+        ChangedLines changed = PatchScope.parse(List.of(
+                "--- a/ex/A.java",
+                "+++ b/ex/A.java",
+                "@@ -1,3 +1,4 @@",
+                " keep",
+                "",
+                "+added",
+                " keep"));
+
+        assertTrue(changed.containsLine("ex/A.java", 3), "the blank line occupies line 2");
+        assertFalse(changed.containsLine("ex/A.java", 2));
+    }
+
+    @Test
+    void aNoNewlineMarkerIsNotALineOfEitherFile() {
+        ChangedLines changed = PatchScope.parse(List.of(
+                "--- a/ex/A.java",
+                "+++ b/ex/A.java",
+                "@@ -1,2 +1,2 @@",
+                " keep",
+                "-old",
+                "\\ No newline at end of file",
+                "+new",
+                "\\ No newline at end of file"));
+
+        assertTrue(changed.containsLine("ex/A.java", 2));
+        assertFalse(changed.containsLine("ex/A.java", 3));
     }
 
     @Test
