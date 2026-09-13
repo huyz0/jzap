@@ -1,0 +1,11 @@
+jzap
+Copyright 2026 Huy Nguyen
+
+This product includes software developed by Huy Nguyen.
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+jzap depends on third-party libraries at build and run time, but does not
+redistribute or repackage any of them; they are resolved by your build tool
+and remain under their own licences. The set is declared in
+gradle/libs.versions.toml.

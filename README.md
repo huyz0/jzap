@@ -151,3 +151,7 @@ nobody noticed. See [docs/parity-and-benchmarks.md](docs/parity-and-benchmarks.m
 - [docs/compatibility.md](docs/compatibility.md) — JDK, build tool, framework and language versions
 - [docs/versioning.md](docs/versioning.md) — what counts as a breaking change
 - [docs/adr/](docs/adr/) — decision records
+
+## Licence
+
+Apache License 2.0 — see [LICENSE](LICENSE). Contributions are accepted under the same terms.
