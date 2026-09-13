@@ -31,6 +31,8 @@ val redDescriptor = project(":fixtures:red-java")
     .layout.buildDirectory.file("fixture.properties")
 val statefulDescriptor = project(":fixtures:stateful-java")
     .layout.buildDirectory.file("fixture.properties")
+val parallelDescriptor = project(":fixtures:parallel-java")
+    .layout.buildDirectory.file("fixture.properties")
 
 tasks.test {
     dependsOn(":fixtures:sample-java:writeFixtureDescriptor",
@@ -40,7 +42,8 @@ tasks.test {
         ":fixtures:multi-core:writeFixtureDescriptor",
         ":fixtures:multi-app:writeFixtureDescriptor",
         ":fixtures:red-java:writeFixtureDescriptor",
-        ":fixtures:stateful-java:writeFixtureDescriptor")
+        ":fixtures:stateful-java:writeFixtureDescriptor",
+        ":fixtures:parallel-java:writeFixtureDescriptor")
     systemProperty("jzap.fixture.descriptor", fixtureDescriptor.get().asFile.absolutePath)
     systemProperty("jzap.hang.descriptor", hangDescriptor.get().asFile.absolutePath)
     systemProperty("jzap.kotlin.descriptor", kotlinDescriptor.get().asFile.absolutePath)
@@ -49,6 +52,7 @@ tasks.test {
     systemProperty("jzap.multi.app.descriptor", multiAppDescriptor.get().asFile.absolutePath)
     systemProperty("jzap.red.descriptor", redDescriptor.get().asFile.absolutePath)
     systemProperty("jzap.stateful.descriptor", statefulDescriptor.get().asFile.absolutePath)
+    systemProperty("jzap.parallel.descriptor", parallelDescriptor.get().asFile.absolutePath)
     // The daemon is tested through the installed binary, because a resident process started from
     // a classpath that only exists inside a Gradle test worker is not the thing users run.
     dependsOn(":jzap-cli:installDist")

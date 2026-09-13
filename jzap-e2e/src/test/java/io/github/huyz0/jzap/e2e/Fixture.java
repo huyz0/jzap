@@ -42,6 +42,17 @@ final class Fixture {
         return new Fixture("jzap.stateful.descriptor", ":fixtures:stateful-java");
     }
 
+    /**
+     * A fixture slow enough to justify more than one analysis JVM.
+     *
+     * <p>Two classes, four tests each, every test sleeping 100ms. The engine sizes its worker
+     * pool from measured test durations, so every other fixture here collapses to one worker and
+     * leaves the concurrent path unexercised.
+     */
+    static Fixture parallel() {
+        return new Fixture("jzap.parallel.descriptor", ":fixtures:parallel-java");
+    }
+
     static Fixture kotest() {
         return new Fixture("jzap.kotest.descriptor", ":fixtures:kotest-sample");
     }
