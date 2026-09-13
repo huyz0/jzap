@@ -40,7 +40,7 @@ class PricingTest {
 
     @Test
     fun `applies a function twice`() {
-        assertEquals(4, applyTwice(1) { it + 1 })
+        assertEquals(3, applyTwice(1) { it + 1 })
     }
 
     @Test

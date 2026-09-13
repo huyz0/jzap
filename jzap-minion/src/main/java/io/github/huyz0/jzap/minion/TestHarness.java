@@ -94,38 +94,59 @@ final class TestHarness {
     }
 
     /**
-     * @param stopOnFirstFailure stop as soon as a test fails. Worth roughly half the run time
-     *                           according to PIT's own measurements, because most mutants are
-     *                           killed by the first test that covers them.
+     * Runs the selected tests, stopping as soon as one fails.
+     *
+     * <p>The first test is run on its own and the rest together. Early exit is worth roughly half
+     * the run time according to PIT's own measurements, because most mutants are killed by the
+     * first test that covers them — and jzap orders the test that killed a mutant last time first,
+     * so the common case is decided by that single execution.
+     *
+     * <p>When it is not, the remainder goes through the launcher in one execution rather than one
+     * each. A launcher execution costs far more than the tiny tests in it, and after the likely
+     * killer has already failed to kill, running the rest one at a time buys an early exit that
+     * rarely triggers at a price always paid. The verdict is unchanged either way: a mutant is
+     * killed if any covering test fails.
      */
     Outcome run(List<String> testIds, boolean stopOnFirstFailure) {
-        int run = 0;
-        for (String testId : testIds) {
-            ResultListener listener = new ResultListener();
-            LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
-                    .selectors(DiscoverySelectors.selectUniqueId(testId))
-                    .build();
-            try {
-                launcher.execute(request, listener);
-            } catch (RunawayLoopError e) {
-                return new Outcome(false, testId, run + 1, false, describe(e), true);
-            } catch (LinkageError e) {
-                return new Outcome(false, testId, run + 1, true, describe(e), false);
-            }
-            run++;
-            if (listener.runaway) {
-                return new Outcome(false, testId, run, false, listener.failureMessage, true);
-            }
-            if (listener.failed) {
-                if (listener.nonViable) {
-                    return new Outcome(false, testId, run, true, listener.failureMessage, false);
-                }
-                if (stopOnFirstFailure) {
-                    return new Outcome(false, testId, run, false, listener.failureMessage, false);
-                }
-            }
+        if (testIds.isEmpty()) {
+            return new Outcome(true, null, 0, false, null, false);
         }
-        return new Outcome(true, null, run, false, null, false);
+        Outcome first = execute(List.of(testIds.get(0)), testIds.get(0), 1);
+        if (!first.passed() || testIds.size() == 1) {
+            return first;
+        }
+        List<String> remainder = testIds.subList(1, testIds.size());
+        Outcome rest = execute(remainder, null, testIds.size());
+        return rest.passed() ? new Outcome(true, null, testIds.size(), false, null, false) : rest;
+    }
+
+    /**
+     * @param attributedTo test to blame when the batch fails and the listener saw no specific id
+     * @param testsRun     tests this execution accounts for
+     */
+    private Outcome execute(List<String> testIds, String attributedTo, int testsRun) {
+        ResultListener listener = new ResultListener();
+        LauncherDiscoveryRequestBuilder builder = LauncherDiscoveryRequestBuilder.request();
+        for (String testId : testIds) {
+            builder.selectors(DiscoverySelectors.selectUniqueId(testId));
+        }
+        try {
+            launcher.execute(builder.build(), listener);
+        } catch (RunawayLoopError e) {
+            return new Outcome(false, attributedTo, testsRun, false, describe(e), true);
+        } catch (LinkageError e) {
+            return new Outcome(false, attributedTo, testsRun, true, describe(e), false);
+        }
+        if (listener.runaway) {
+            return new Outcome(false, listener.failingTest, testsRun, false,
+                    listener.failureMessage, true);
+        }
+        if (listener.failed) {
+            String failing = listener.failingTest != null ? listener.failingTest : attributedTo;
+            return new Outcome(false, failing, testsRun, listener.nonViable,
+                    listener.failureMessage, false);
+        }
+        return new Outcome(true, null, testsRun, false, null, false);
     }
 
     private static String describe(Throwable t) {
@@ -138,6 +159,7 @@ final class TestHarness {
         private boolean nonViable;
         private boolean runaway;
         private String failureMessage;
+        private String failingTest;
 
         @Override
         public void executionFinished(TestIdentifier id, TestExecutionResult result) {
@@ -145,6 +167,11 @@ final class TestHarness {
                 return;
             }
             failed = true;
+            if (failingTest == null) {
+                // Which test killed the mutant is reported to the user and keyed in the cache, so
+                // it has to be the actual one even when several ran together.
+                failingTest = id.getUniqueId();
+            }
             result.getThrowable().ifPresent(t -> {
                 if (failureMessage == null) {
                     failureMessage = describe(t);

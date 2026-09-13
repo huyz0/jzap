@@ -32,6 +32,11 @@ final class Fixture {
         return new Fixture("jzap.kotlin.descriptor", ":fixtures:kotlin-sample");
     }
 
+    /** A fixture whose suite is already failing before any mutant is applied. */
+    static Fixture red() {
+        return new Fixture("jzap.red.descriptor", ":fixtures:red-java");
+    }
+
     static Fixture kotest() {
         return new Fixture("jzap.kotest.descriptor", ":fixtures:kotest-sample");
     }

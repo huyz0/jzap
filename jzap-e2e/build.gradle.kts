@@ -27,6 +27,8 @@ val multiCoreDescriptor = project(":fixtures:multi-core")
     .layout.buildDirectory.file("fixture.properties")
 val multiAppDescriptor = project(":fixtures:multi-app")
     .layout.buildDirectory.file("fixture.properties")
+val redDescriptor = project(":fixtures:red-java")
+    .layout.buildDirectory.file("fixture.properties")
 
 tasks.test {
     dependsOn(":fixtures:sample-java:writeFixtureDescriptor",
@@ -34,13 +36,15 @@ tasks.test {
         ":fixtures:kotlin-sample:writeFixtureDescriptor",
         ":fixtures:kotest-sample:writeFixtureDescriptor",
         ":fixtures:multi-core:writeFixtureDescriptor",
-        ":fixtures:multi-app:writeFixtureDescriptor")
+        ":fixtures:multi-app:writeFixtureDescriptor",
+        ":fixtures:red-java:writeFixtureDescriptor")
     systemProperty("jzap.fixture.descriptor", fixtureDescriptor.get().asFile.absolutePath)
     systemProperty("jzap.hang.descriptor", hangDescriptor.get().asFile.absolutePath)
     systemProperty("jzap.kotlin.descriptor", kotlinDescriptor.get().asFile.absolutePath)
     systemProperty("jzap.kotest.descriptor", kotestDescriptor.get().asFile.absolutePath)
     systemProperty("jzap.multi.core.descriptor", multiCoreDescriptor.get().asFile.absolutePath)
     systemProperty("jzap.multi.app.descriptor", multiAppDescriptor.get().asFile.absolutePath)
+    systemProperty("jzap.red.descriptor", redDescriptor.get().asFile.absolutePath)
     // Analysis forks JVMs and runs a full test suite per mutant, so it needs room.
     timeout.set(Duration.ofMinutes(10))
 }
