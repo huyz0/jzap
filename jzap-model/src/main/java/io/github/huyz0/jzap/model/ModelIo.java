@@ -47,10 +47,6 @@ public final class ModelIo {
                 .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
     }
 
-    public ObjectMapper mapper() {
-        return mapper;
-    }
-
     /** Warnings accumulated by the most recent read. */
     public List<String> warnings() {
         return List.copyOf(warnings);

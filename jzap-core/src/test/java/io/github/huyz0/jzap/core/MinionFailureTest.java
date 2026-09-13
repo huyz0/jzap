@@ -1,8 +1,7 @@
-package io.github.huyz0.jzap.e2e;
+package io.github.huyz0.jzap.core;
 
 import io.github.huyz0.jzap.agent.MutantSwitch;
-import io.github.huyz0.jzap.core.MinionProcess;
-import io.github.huyz0.jzap.core.RuntimeJars;
+import io.github.huyz0.jzap.core.testing.Fixture;
 import io.github.huyz0.jzap.model.ModuleModel;
 import io.github.huyz0.jzap.wire.WireException;
 import org.junit.jupiter.api.Test;

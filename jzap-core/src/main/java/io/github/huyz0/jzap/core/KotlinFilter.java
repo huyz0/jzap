@@ -57,7 +57,7 @@ import java.util.Set;
  *       increment.
  * </ul>
  */
-public final class KotlinFilter {
+final class KotlinFilter {
 
     public static final String ID = "KOTLIN";
 

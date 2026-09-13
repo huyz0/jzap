@@ -1,4 +1,4 @@
-package io.github.huyz0.jzap.e2e;
+package io.github.huyz0.jzap.core.testing;
 
 import io.github.huyz0.jzap.model.ModuleModel;
 import io.github.huyz0.jzap.model.ProjectModel;
@@ -12,33 +12,37 @@ import java.util.List;
 import java.util.Properties;
 
 /**
- * Reads the descriptor the fixture's own Gradle build publishes, and turns it into a project
- * model. This is a stand-in for the Gradle adapter of M18: the same information, computed by
- * the build that owns it, consumed by the engine through the one seam.
+ * Reads the descriptor a fixture project's own Gradle build publishes, and turns it into a
+ * project model.
+ *
+ * <p>A stand-in for the Gradle adapter: the same information, computed by the build that owns it,
+ * consumed by the engine through the one seam. Shared as a test fixture because both this
+ * module's tests and the end-to-end ones analyse the same fixture projects, and a second copy of
+ * this would drift from the descriptors the fixture builds write.
  */
-final class Fixture {
+public final class Fixture {
 
     private final Properties properties = new Properties();
 
-    Fixture() {
+    public Fixture() {
         this("jzap.fixture.descriptor", ":fixtures:sample-java");
     }
 
-    static Fixture hang() {
+    public static Fixture hang() {
         return new Fixture("jzap.hang.descriptor", ":fixtures:hang-java");
     }
 
-    static Fixture kotlin() {
+    public static Fixture kotlin() {
         return new Fixture("jzap.kotlin.descriptor", ":fixtures:kotlin-sample");
     }
 
     /** A fixture whose suite is already failing before any mutant is applied. */
-    static Fixture red() {
+    public static Fixture red() {
         return new Fixture("jzap.red.descriptor", ":fixtures:red-java");
     }
 
     /** A fixture whose production code keeps static state across calls. */
-    static Fixture stateful() {
+    public static Fixture stateful() {
         return new Fixture("jzap.stateful.descriptor", ":fixtures:stateful-java");
     }
 
@@ -49,7 +53,7 @@ final class Fixture {
      * pool from measured test durations, so every other fixture here collapses to one worker and
      * leaves the concurrent path unexercised.
      */
-    static Fixture parallel() {
+    public static Fixture parallel() {
         return new Fixture("jzap.parallel.descriptor", ":fixtures:parallel-java");
     }
 
@@ -59,11 +63,11 @@ final class Fixture {
      * <p>The loop guard counts back edges, so blocking trips nothing: this is the one case the
      * wall-clock backstop has to catch on its own.
      */
-    static Fixture blocking() {
+    public static Fixture blocking() {
         return new Fixture("jzap.blocking.descriptor", ":fixtures:blocking-java");
     }
 
-    static Fixture kotest() {
+    public static Fixture kotest() {
         return new Fixture("jzap.kotest.descriptor", ":fixtures:kotest-sample");
     }
 
@@ -71,7 +75,7 @@ final class Fixture {
      * A two-module project: a library with no tests of its own, and an application module whose
      * tests exercise it.
      */
-    static ProjectModel multiModule() {
+    public static ProjectModel multiModule() {
         Fixture core = new Fixture("jzap.multi.core.descriptor", ":fixtures:multi-core");
         Fixture app = new Fixture("jzap.multi.app.descriptor", ":fixtures:multi-app");
         return new ProjectModel(1,
@@ -79,7 +83,7 @@ final class Fixture {
                 Scope.all(), null, List.of("json"), 1, 1.5, 4000, 100, null);
     }
 
-    ModuleModel module() {
+    public ModuleModel module() {
         return new ModuleModel(
                 moduleId,
                 paths("mainClasses"),
@@ -111,7 +115,7 @@ final class Fixture {
         return value.isEmpty() ? List.of() : List.of(value.split(java.io.File.pathSeparator));
     }
 
-    Path projectRoot() {
+    public Path projectRoot() {
         return Path.of(properties.getProperty("projectRoot"));
     }
 
@@ -121,7 +125,7 @@ final class Fixture {
      * <p>Tests derive line numbers this way rather than hard-coding them, because a fixture's
      * comments get edited and a test that then fails is reporting on the comment, not the code.
      */
-    int lineContaining(String relativePath, String needle) {
+    public int lineContaining(String relativePath, String needle) {
         Path file = Path.of(properties.getProperty("sourceRoot")).resolve(relativePath);
         try {
             List<String> lines = Files.readAllLines(file);
@@ -137,7 +141,7 @@ final class Fixture {
     }
 
     /** Number of test methods declared in the fixture's test sources. */
-    int declaredTestCount(Path testSourceFile) {
+    public int declaredTestCount(Path testSourceFile) {
         try {
             return (int) Files.readAllLines(testSourceFile).stream()
                     .filter(line -> line.trim().equals("@Test"))
@@ -147,7 +151,7 @@ final class Fixture {
         }
     }
 
-    ProjectModel model(Scope scope) {
+    public ProjectModel model(Scope scope) {
         return new ProjectModel(1, List.of(module()), scope, null, List.of("json"), 1, 1.5, 4000,
                 100, null);
     }
@@ -156,7 +160,7 @@ final class Fixture {
      * @param maxMutantsPerMinion 1 gives every mutant a JVM of its own, which is the sound but
      *                            slow way and therefore the reference for whether reuse is safe
      */
-    ProjectModel model(Scope scope, int maxMutantsPerMinion) {
+    public ProjectModel model(Scope scope, int maxMutantsPerMinion) {
         return new ProjectModel(1, List.of(module()), scope, null, List.of("json"), 1, 1.5, 4000,
                 maxMutantsPerMinion, null);
     }

@@ -11,7 +11,7 @@ import java.util.Properties;
  * the build version, and a drifted version would let a cache written by one engine be reused by
  * another that computes different verdicts.
  */
-public final class EngineVersion {
+final class EngineVersion {
 
     private static final String VALUE = load();
 

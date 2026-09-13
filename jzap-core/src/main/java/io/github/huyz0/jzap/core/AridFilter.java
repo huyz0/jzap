@@ -46,7 +46,7 @@ import java.util.Set;
  * <p>Off by default. PIT does not do this, so every dropped mutant would become a difference
  * against the correctness oracle, burying the ones worth reading.
  */
-public final class AridFilter {
+final class AridFilter {
 
     public static final String ID = "ARID";
 

@@ -1,5 +1,6 @@
 package io.github.huyz0.jzap.e2e;
 
+import io.github.huyz0.jzap.core.testing.Fixture;
 import io.github.huyz0.jzap.core.AnalysisEngine;
 import io.github.huyz0.jzap.git.PatchScope;
 import io.github.huyz0.jzap.model.AnalysisResult;

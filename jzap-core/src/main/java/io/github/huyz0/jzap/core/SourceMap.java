@@ -32,7 +32,7 @@ import java.util.Optional;
  * stepping through and wrong for a report: a mutant in an inlined body is a mutation of the
  * inline function's source, not of the line that called it.
  */
-public final class SourceMap {
+final class SourceMap {
 
     private final Map<Integer, Integer> outputToInput;
     private final Map<Integer, String> fileNames;

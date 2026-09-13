@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
  * reproduced, so bounding how long state can accumulate is a correctness measure, not a
  * tidiness one.
  */
-public final class MinionProcess implements AutoCloseable {
+final class MinionProcess implements AutoCloseable {
 
     /** How long to wait for a minion to connect back before giving up on it. */
     private static final int CONNECT_TIMEOUT_MILLIS = 60_000;

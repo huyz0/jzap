@@ -2,8 +2,10 @@ import java.time.Duration
 
 dependencies {
     testImplementation(project(":jzap-core"))
+    testImplementation(testFixtures(project(":jzap-core")))
     testImplementation(project(":jzap-model"))
     testImplementation(project(":jzap-git"))
+    testImplementation(project(":jzap-wire"))
     testImplementation(project(":jzap-report"))
 
     // On the runtime classpath so RuntimeJars can find them, exactly as they will be found

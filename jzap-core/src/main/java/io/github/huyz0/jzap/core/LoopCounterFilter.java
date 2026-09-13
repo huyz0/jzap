@@ -35,7 +35,7 @@ import java.util.Set;
  * seeding" is a judgement rather than a fact, and a user analysing loop-heavy numeric code may
  * disagree.
  */
-public final class LoopCounterFilter {
+final class LoopCounterFilter {
 
     public static final String ID = "LOOP_COUNTER";
 

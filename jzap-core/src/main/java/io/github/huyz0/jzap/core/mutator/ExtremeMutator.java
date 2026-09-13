@@ -48,7 +48,18 @@ abstract class ExtremeMutator implements Mutator {
             public void visitEnd() {
                 super.visitEnd();
                 int firstLine = firstLineOf(this);
-                if (firstLine > 0 && ctx.shouldMutate(id(), describeAt(firstLine, ctx, returnType))) {
+                if (firstLine <= 0) {
+                    // No debug information, so there is no line to report a mutant against.
+                    if (next != null) {
+                        accept(next);
+                    }
+                    return;
+                }
+                // Positioned before asking, rather than as a side effect of evaluating the
+                // description argument. This mutator replaces a whole method, so it never passes
+                // through the line tracker and has to say where it is itself.
+                ctx.positionAtLine(firstLine);
+                if (ctx.shouldMutate(id(), description(returnType))) {
                     instructions.clear();
                     tryCatchBlocks.clear();
                     localVariables = null;
@@ -60,11 +71,6 @@ abstract class ExtremeMutator implements Mutator {
                 if (next != null) {
                     accept(next);
                 }
-            }
-
-            private String describeAt(int line, MutationContext context, Type type) {
-                context.line(line);
-                return description(type);
             }
         };
     }

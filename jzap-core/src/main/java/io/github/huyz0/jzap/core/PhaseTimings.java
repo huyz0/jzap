@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * running at once. A phase's total is therefore CPU time across workers and can exceed the wall
  * clock of the phase that contains it.
  */
-public final class PhaseTimings {
+final class PhaseTimings {
 
     /**
      * One accumulating measurement.

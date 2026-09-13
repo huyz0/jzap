@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
  * Class-name globs, using the convention PIT users already know: {@code *} matches any run
  * of characters including dots, so {@code com.example.*} covers subpackages.
  */
-public final class Globs {
+final class Globs {
 
     private Globs() {
     }

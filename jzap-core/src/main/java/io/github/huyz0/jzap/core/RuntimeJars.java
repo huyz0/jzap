@@ -21,7 +21,7 @@ import java.util.stream.Stream;
  * agent directory is packaged into a temporary jar, because {@code -javaagent} requires a
  * jar with a manifest.
  */
-public final class RuntimeJars {
+final class RuntimeJars {
 
     /**
      * @param agent  jar to pass to {@code -javaagent}
@@ -38,15 +38,26 @@ public final class RuntimeJars {
     private RuntimeJars() {
     }
 
-    public static Jars discover() {
-        Path agent = locate(AGENT_MARKER, "jzap-agent");
-        Path minion = locate(MINION_MARKER, "jzap-minion");
-        Path wire = locate(WIRE_MARKER, "jzap-wire");
+    static Jars discover() {
+        return discoverWith(RuntimeJars.class.getClassLoader());
+    }
+
+    /**
+     * Discovery against a given classloader.
+     *
+     * <p>The loader is a parameter so the diagnostic for a missing artefact can be tested. It is
+     * a message about someone's packaging, and the only way to produce the condition on purpose
+     * is to ask a loader that has nothing.
+     */
+    static Jars discoverWith(ClassLoader loader) {
+        Path agent = locate(loader, AGENT_MARKER, "jzap-agent");
+        Path minion = locate(loader, MINION_MARKER, "jzap-minion");
+        Path wire = locate(loader, WIRE_MARKER, "jzap-wire");
         return new Jars(asAgentJar(agent), minion, wire);
     }
 
-    private static Path locate(String marker, String module) {
-        URL url = RuntimeJars.class.getClassLoader().getResource(marker);
+    private static Path locate(ClassLoader loader, String marker, String module) {
+        URL url = loader.getResource(marker);
         if (url == null) {
             throw new IllegalStateException(module + " is not on the jzap classpath, so no "
                     + "analysis JVM can be started. Add " + module + " as a dependency of "

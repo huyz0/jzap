@@ -22,7 +22,7 @@ import org.objectweb.asm.Opcodes;
  * would therefore place instructions between a branch target and its frame, which produces a
  * class the verifier rejects and, worse, code that misbehaves before it is rejected.
  */
-public final class CoverageInstrumenter {
+final class CoverageInstrumenter {
 
     static final String RECORDER = "io/github/huyz0/jzap/agent/CoverageRecorder";
 

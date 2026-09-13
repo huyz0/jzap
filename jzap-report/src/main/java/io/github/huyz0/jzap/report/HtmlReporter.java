@@ -16,7 +16,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /** A single self-contained HTML file, grouped by source file and ordered by survivors first. */
-public final class HtmlReporter implements Reporter {
+final class HtmlReporter implements Reporter {
 
     public static final String FILE_NAME = "index.html";
 

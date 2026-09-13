@@ -25,7 +25,7 @@ import java.util.Map;
  * <p>Normalisation strips debug information and stack map frames before hashing, so two mutants
  * that differ only in line-number tables are recognised as the same program.
  */
-public final class EquivalenceFilter {
+final class EquivalenceFilter {
 
     public static final String ID = "TCE";
 

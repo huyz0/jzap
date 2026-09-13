@@ -28,19 +28,37 @@ class RuntimeJarsTest {
     /**
      * A missing artefact names the module and what to do about it.
      *
-     * <p>This module's own tests do not have the minion on their classpath, which is exactly the
-     * situation a user hits when jzap is embedded without its runtime pieces. The successful
-     * discovery is covered where it is real: every end-to-end test starts an analysis JVM.
+     * <p>The condition is a packaging mistake -- jzap embedded without its runtime pieces -- and
+     * a loader that finds nothing is the only way to produce it on purpose.
      */
     @Test
     void aMissingRuntimeArtefactSaysWhichOneAndWhatToAddIt() {
-        IllegalStateException e = assertThrows(IllegalStateException.class, RuntimeJars::discover);
+        ClassLoader findsNothing = new ClassLoader(null) {
+            @Override
+            public java.net.URL getResource(String name) {
+                return null;
+            }
+        };
 
-        assertTrue(e.getMessage().contains("jzap-minion"),
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> RuntimeJars.discoverWith(findsNothing));
+
+        assertTrue(e.getMessage().contains("jzap-"),
                 "the message has to name the module: " + e.getMessage());
         assertTrue(e.getMessage().contains("as a dependency"),
                 "and say what to do, since the cause is always a packaging mistake: "
                         + e.getMessage());
+    }
+
+    @Test
+    void discoversAllThreeArtefactsFromThisModulesTestClasspath() {
+        RuntimeJars.Jars jars = RuntimeJars.discover();
+
+        assertTrue(Files.exists(jars.agent()), "the agent must exist to be passed to -javaagent");
+        assertTrue(Files.exists(jars.minion()), "the minion is what runs the user's tests");
+        assertTrue(Files.exists(jars.wire()));
+        assertTrue(Files.isRegularFile(jars.agent()),
+                "a directory cannot be passed to -javaagent: " + jars.agent());
     }
 
     @Test

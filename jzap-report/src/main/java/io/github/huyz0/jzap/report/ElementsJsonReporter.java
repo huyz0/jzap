@@ -21,7 +21,7 @@ import java.util.Map;
  * <p>Emitting a format that already has tooling is worth more than inventing one: an existing
  * team can point their current dashboard at jzap without writing anything.
  */
-public final class ElementsJsonReporter implements Reporter {
+final class ElementsJsonReporter implements Reporter {
 
     public static final String FILE_NAME = "mutation-test-elements.json";
 

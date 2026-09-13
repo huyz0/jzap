@@ -68,7 +68,7 @@ import java.util.TreeSet;
  * a changed production class can alter which lines its callers reach, so invalidating only the
  * changed class's coverage would be unsound.
  */
-public final class MutantCache {
+final class MutantCache {
 
     private static final String FORMAT = "jzap cache v2";
     private static final String SEPARATOR = "---";

@@ -9,7 +9,7 @@ import org.objectweb.asm.Opcodes;
  * a source of inventory differences against PIT, and docs/parity-and-benchmarks.md requires
  * every such difference to have a named cause.
  */
-public final class MethodFilter {
+final class MethodFilter {
 
     private MethodFilter() {
     }

@@ -18,7 +18,7 @@ import java.util.Locale;
  * that format is theirs and undocumented here, so claiming compatibility would be a promise
  * this file cannot keep. The shape below is what the CI integrations of M13 consume.
  */
-public final class AnnotationsJsonReporter implements Reporter {
+final class AnnotationsJsonReporter implements Reporter {
 
     public static final String FILE_NAME = "jzap-annotations.json";
 

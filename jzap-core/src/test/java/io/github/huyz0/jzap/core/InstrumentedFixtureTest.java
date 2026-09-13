@@ -1,10 +1,7 @@
-package io.github.huyz0.jzap.e2e;
+package io.github.huyz0.jzap.core;
 
 import io.github.huyz0.jzap.agent.CoverageRecorder;
-import io.github.huyz0.jzap.core.ClassBytes;
-import io.github.huyz0.jzap.core.ClassScanner;
-import io.github.huyz0.jzap.core.CoverageInstrumenter;
-import io.github.huyz0.jzap.core.ProbeIndex;
+import io.github.huyz0.jzap.core.testing.Fixture;
 import io.github.huyz0.jzap.model.Scope;
 import org.junit.jupiter.api.Test;
 

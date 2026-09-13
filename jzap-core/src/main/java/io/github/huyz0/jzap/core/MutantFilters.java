@@ -35,9 +35,31 @@ public record MutantFilters(
         boolean onePerLine) {
 
     /**
-     * Filter id for keeping at most one mutant per source line.
+     * Every filter's id, which is how a user names one to switch it on or off.
      *
-     * <p>The only id not owned by a filter class, because the rule is three lines inside
+     * <p>Exposed from here rather than from the filters themselves. A caller naming a filter --
+     * the command line is the only one -- wants the vocabulary, not the bytecode analysis behind
+     * it, and reaching past this record for four ID constants made four implementation classes
+     * part of this module's public surface for no other reason.
+     *
+     * <p>Each is the filter's own definition rather than a second copy of the string, so there is
+     * still exactly one place a filter is named.
+     */
+    public static final String LOOP_COUNTERS = LoopCounterFilter.ID;
+
+    /** @see #LOOP_COUNTERS */
+    public static final String KOTLIN_JUNK = KotlinFilter.ID;
+
+    /** @see #LOOP_COUNTERS */
+    public static final String EQUIVALENCE = EquivalenceFilter.ID;
+
+    /** @see #LOOP_COUNTERS */
+    public static final String ARID = AridFilter.ID;
+
+    /**
+     * Keeping at most one mutant per source line.
+     *
+     * <p>The only id with no filter class behind it, because the rule is three lines inside
      * {@link MutationEngine} rather than a bytecode analysis of its own.
      */
     public static final String ONE_PER_LINE = "ONE_PER_LINE";

@@ -16,7 +16,7 @@ import java.util.Map;
  * <p>Leads with surviving mutants rather than with the score, because the survivors are the
  * actionable part: each one is a change to the code that the test suite does not notice.
  */
-public final class ConsoleReporter implements Reporter {
+final class ConsoleReporter implements Reporter {
 
     private final PrintStream out;
 

@@ -6,7 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.List;
 
 /** Content hashing for cache keys. */
-public final class Hashes {
+final class Hashes {
 
     private Hashes() {
     }

@@ -22,7 +22,7 @@ final class LineNumberTracker extends MethodVisitor {
 
     @Override
     public void visitLineNumber(int line, Label start) {
-        ctx.line(line);
+        ctx.positionAtLine(line);
         super.visitLineNumber(line, start);
     }
 }

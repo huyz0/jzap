@@ -1,9 +1,5 @@
 package io.github.huyz0.jzap.cli;
 
-import io.github.huyz0.jzap.core.AridFilter;
-import io.github.huyz0.jzap.core.EquivalenceFilter;
-import io.github.huyz0.jzap.core.KotlinFilter;
-import io.github.huyz0.jzap.core.LoopCounterFilter;
 import io.github.huyz0.jzap.core.MutantFilters;
 import io.github.huyz0.jzap.model.ModelIo;
 import io.github.huyz0.jzap.model.ProjectModel;
@@ -88,10 +84,10 @@ final class ModelOptions {
     private List<String> disabledFilters(Scope fromModel) {
         List<String> filters = new ArrayList<>(fromModel.disabledFilters());
         if (mutateLoopCounters) {
-            filters.add(LoopCounterFilter.ID);
+            filters.add(MutantFilters.LOOP_COUNTERS);
         }
         if (mutateKotlinInternals) {
-            filters.add(KotlinFilter.ID);
+            filters.add(MutantFilters.KOTLIN_JUNK);
         }
         return List.copyOf(new LinkedHashSet<>(filters));
     }
@@ -100,10 +96,10 @@ final class ModelOptions {
     private List<String> optionalFilters(Scope fromModel) {
         List<String> filters = new ArrayList<>(fromModel.enabledFilters());
         if (dedup) {
-            filters.add(EquivalenceFilter.ID);
+            filters.add(MutantFilters.EQUIVALENCE);
         }
         if (arid) {
-            filters.add(AridFilter.ID);
+            filters.add(MutantFilters.ARID);
         }
         if (onePerLine) {
             filters.add(MutantFilters.ONE_PER_LINE);

@@ -1,5 +1,6 @@
 package io.github.huyz0.jzap.e2e;
 
+import io.github.huyz0.jzap.core.testing.Fixture;
 import io.github.huyz0.jzap.model.ModelIo;
 import io.github.huyz0.jzap.model.Scope;
 import org.junit.jupiter.api.AfterEach;

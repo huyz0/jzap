@@ -4,6 +4,11 @@ plugins {
 
 dependencies {
     implementation(project(":jzap-core"))
+    // Declared rather than inherited through jzap-core. Both are used directly here -- the model
+    // types throughout, and the wire framing for the daemon's own socket -- and a module that
+    // compiles against something should say so.
+    implementation(project(":jzap-model"))
+    implementation(project(":jzap-wire"))
     implementation(project(":jzap-git"))
     implementation(project(":jzap-report"))
     implementation(libs.picocli)

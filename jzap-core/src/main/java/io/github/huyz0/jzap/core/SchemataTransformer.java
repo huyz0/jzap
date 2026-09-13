@@ -54,7 +54,7 @@ import java.util.Set;
  * mutants fall back to per-mutant redefinition. A mutant that cannot be seeded here is routed, not
  * dropped -- silently losing mutants would show up as a smaller inventory rather than as a bug.
  */
-public final class SchemataTransformer {
+final class SchemataTransformer {
 
     static final String OPS = "io/github/huyz0/jzap/agent/MutantOps";
 

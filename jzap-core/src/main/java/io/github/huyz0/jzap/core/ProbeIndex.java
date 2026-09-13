@@ -16,7 +16,7 @@ import java.util.Map;
  * <p>Ids are allocated in the order classes are instrumented, and {@link ClassScanner} returns
  * classes in sorted order, so the mapping is reproducible across runs.
  */
-public final class ProbeIndex {
+final class ProbeIndex {
 
     private final Map<String, Integer> ids = new LinkedHashMap<>();
     private final Map<Integer, String> locations = new LinkedHashMap<>();

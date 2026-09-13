@@ -302,4 +302,44 @@ class RunCommandTest {
         assertTrue(result.err().contains("classes.jar"),
                 "the message has to name what could not be read: " + result.err());
     }
+
+    /**
+     * A malformed model is a usage error, with the message and no stack trace.
+     *
+     * <p>ModelIo composes a careful diagnostic naming the file and the field. None of it reached
+     * the user: ModelValidationException extended RuntimeException, every command catches
+     * IllegalArgumentException for a bad model, so it slipped past all of them and arrived as a
+     * 32-line Jackson stack trace with exit code 1 -- the code that means the mutation score was
+     * below the threshold.
+     */
+    @Test
+    void aModelWithAFieldOfTheWrongTypeIsAUsageError(@TempDir Path dir) {
+        Path model = CliFixture.write(dir.resolve("bad.json"), """
+                { "schemaVersion": 1, "threads": "many", "modules": [ { "id": ":a" } ] }
+                """);
+
+        Invocation result = run("run", "-m", model.toString());
+
+        assertEquals(RunCommand.EXIT_USAGE, result.exitCode(), result.all());
+        assertTrue(result.err().startsWith("jzap: "),
+                "the user should meet jzap's message, not a deserialiser's: " + result.err());
+        assertTrue(result.err().contains("threads"),
+                "and it has to name the field: " + result.err());
+        assertFalse(result.err().contains("\tat "),
+                "a usage mistake is not a crash and must not print a stack trace: " + result.err());
+    }
+
+    @Test
+    void aModelWithAnUnsupportedSchemaVersionIsAUsageError(@TempDir Path dir) {
+        Path model = CliFixture.write(dir.resolve("future.json"), """
+                { "schemaVersion": 99, "modules": [ { "id": ":a" } ] }
+                """);
+
+        Invocation result = run("run", "-m", model.toString());
+
+        assertEquals(RunCommand.EXIT_USAGE, result.exitCode(), result.all());
+        assertTrue(result.err().contains("Upgrade jzap"),
+                "a newer adapter than engine is the likely cause, and the fix is worth saying: "
+                        + result.err());
+    }
 }
