@@ -174,22 +174,28 @@ bench fixture (40 classes, 200 tests, ~1080 mutants) on a developer machine:
 
 | Scenario | jzap | PIT |
 |---|---|---|
-| Full run, one thread | 8.9s | 29.6s |
-| Full run, 4 threads | 4.5s | not comparable (PIT pinned to one thread) |
-| Diff run, one changed line, 6 mutants in scope | 1.6s | not comparable |
-| Re-run with no changes, cache warm | 0.43s | no equivalent |
-| Re-run after one class recompiled | 1.8s | no equivalent |
+| Full run, one thread | **2.9s** | 28.1s |
+| Full run, 20 threads | 2.6s | not comparable (PIT pinned to one thread) |
+| Diff run, one changed line, 6 mutants in scope | 1.4s | not comparable |
+| Re-run with no changes, cache warm | 0.42s | no equivalent |
+| Re-run after one class recompiled | 1.6s | no equivalent |
 | Re-run with no changes, warm daemon | 0.17s | no equivalent |
 
-At one thread that is 3.3x faster than PIT while analysing 40 *more* mutants (3.8%), so the ratio
-is conservative rather than flattered. 6.6x at four threads, against a PIT pinned to one.
+At one thread that is **9.6x faster than PIT** while analysing 40 *more* mutants (3.8%), so the
+ratio is conservative rather than flattered. 11x at twenty threads, against a PIT pinned to one.
 
-The schemata engine accounts for 2.25x of that (2.40x on the execution phase alone) against the
+The schemata engine accounts for 6.4x of that — 10.4x on the execution phase alone — against the
 reference engine, with verdicts asserted identical.
 
-Thread scaling is sublinear — 1.00x, 1.58x, 1.91x, 1.89x at 1, 2, 4 and 20 threads — because the
-coverage phase is serial and the fixture has only 40 classes, so beyond a handful of workers each
-one pays JVM startup for very little work.
+Three quarters of that came from profiling rather than from new features, and the findings are in
+[profiling.md](profiling.md): every analysis JVM was discovering a test suite it never read,
+recycling the JVM every 100 mutants was throwing away JIT warmup, and each mutant took three
+protocol round trips where one would do.
+
+Thread scaling is now flat-positive — 1.00x, 1.14x, 1.11x, 1.14x at 1, 2, 4 and 20 threads. It was
+*negative* at twenty until the worker count was capped by estimated work: once a mutant costs 1.5ms
+and a JVM start costs 250ms, more workers is worse. The remaining scaling is modest because the run
+is now 2.9s, of which 0.8s is a serial coverage phase.
 
 **Run these on a quiet machine.** An earlier run taken while a build was running alongside it
 reported reduction techniques at 0.98x and 0.72x — numbers that invited a conclusion about

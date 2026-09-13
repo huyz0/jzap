@@ -7,8 +7,8 @@ compiled code in small, realistic ways — flips a comparison, swaps an operator
 and reports every change your test suite fails to catch. Each survivor is a concrete gap.
 
 **Status: working, measured, and faster than PIT.** On the benchmark fixture, single-threaded and
-with the same mutators: **8.9s against PIT's 29.6s**, while analysing 40 *more* mutants. Verdicts
-agree with PIT on all 1051 mutants the two tools share. A warm cache takes a re-run to 0.43s, and a
+with the same mutators: **2.9s against PIT's 28.1s**, while analysing 40 *more* mutants. Verdicts
+agree with PIT on all 1051 mutants the two tools share. A warm cache takes a re-run to 0.42s, and a
 resident daemon takes it to 0.17s.
 
 Java and Kotlin, JUnit 5 and Kotest, Gradle and Maven, single module and whole reactor.
@@ -146,6 +146,7 @@ nobody noticed. See [docs/parity-and-benchmarks.md](docs/parity-and-benchmarks.m
 - [docs/architecture.md](docs/architecture.md) — the build-tool-agnostic core
 - [docs/delivery-plan.md](docs/delivery-plan.md) — 23 milestones, with kill criteria
 - [docs/parity-and-benchmarks.md](docs/parity-and-benchmarks.md) — the PIT comparison harness
+- [docs/profiling.md](docs/profiling.md) — where the time goes, and which optimisations were not worth doing
 - [docs/troubleshooting.md](docs/troubleshooting.md) — the failures people actually hit
 - [docs/compatibility.md](docs/compatibility.md) — JDK, build tool, framework and language versions
 - [docs/versioning.md](docs/versioning.md) — what counts as a breaking change

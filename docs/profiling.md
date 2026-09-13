@@ -11,9 +11,9 @@ Measured on `fixtures/bench-java`: 40 classes, 200 tests, 1080 mutants, 960 of t
 The engine reports its own breakdown in the result's `timings`, which is how each of these was
 found:
 
-| | before | after | 
+| | before | after |
 |---|---|---|
-| execution phase | 6344 ms | **1669 ms** |
+| execution phase | 6344 ms | **1690 ms** |
 | — analysis JVM startup | 2787 ms (10 JVMs) | 66 ms (1 JVM) |
 | — running tests | 4457 ms | 1445 ms |
 | — activating mutants | 386 ms | 0 ms |
@@ -85,7 +85,7 @@ get there first.
 ### Parallelising the coverage phase
 
 Coverage is now the largest remaining serial block: `810 ms` against an execution phase of
-`1669 ms`. It runs each test individually because per-test attribution requires it, and it runs
+`1690 ms`. It runs each test individually because per-test attribution requires it, and it runs
 them all in one JVM. Splitting the tests across several JVMs would parallelise it — worth perhaps
 `550 ms`, a fifth of a full run.
 
@@ -101,6 +101,30 @@ Each covered mutant costs one `launcher.execute` call, and that call re-discover
 amortises it when a mutant has several covering tests — but on these fixtures each mutant has
 exactly one, so there is nothing to batch. A project with broad tests would benefit from the
 batching that already exists.
+
+## What it added up to
+
+On the same fixture, same mutators, one thread:
+
+| | before profiling | after |
+|---|---|---|
+| jzap, full run | 8.89 s | **2.91 s** |
+| PIT, full run | 29.58 s | 28.09 s |
+| ratio | 3.33x | **9.64x** |
+| execution phase, schemata vs reference engine | 2.40x | **10.37x** |
+
+Thread scaling went from **negative** to flat-positive: 20 threads measured 4.06 s before the
+worker cap and 2.55 s after, against 2.90 s at one thread. The remaining scaling is modest because
+the run is now only 2.9 s, of which 0.8 s is a serial coverage phase.
+
+One number moved in a direction that looks like a regression and is not: a fully cached re-run is
+unchanged at 0.42 s, but that is now **14.3%** of a full run rather than 4.8%, because the full run
+got three times faster. The cache did not get worse; what it was being compared against got better.
+
+An earlier run of this harness reported the one-changed-class scenario at 6.23 s, worse than a full
+run, which would have been a genuine bug in the cache. It was contention: reproduced by hand it was
+1.2 s, and the clean rerun gives 1.58 s. Third time in this project that a surprising benchmark
+number has turned out to be the machine rather than the code.
 
 ## How to reproduce
 

@@ -6,46 +6,46 @@ Fixture: 1 code path(s), generated bench classes
 Compilation is excluded; both tools analyse the same prebuilt classes.
 
 S1  full run
-  jzap (default engine)                 8.89s   (range 8.00-8.90s, n=3)
-  PIT                                  29.58s   (range 28.63-29.68s, n=3)
-  jzap is 3.33x faster than PIT here
+  jzap (default engine)                 2.91s   (range 2.90-2.92s, n=3)
+  PIT                                  28.09s   (range 28.00-28.22s, n=3)
+  jzap is 9.64x faster than PIT here
   Work parity: jzap analysed 40 more mutants than PIT (3.8%), so the ratio is conservative.
 
 S1a engine
-  jzap, naive                          19.54s   (range 19.17-21.28s, n=3)    1.00x vs naive
-  jzap, schemata                        8.70s   (range 8.00-9.66s, n=3)    2.25x vs naive
-  execution phase only: 20.06s -> 8.34s, 2.40x
+  jzap, naive                          18.65s   (range 18.49-18.99s, n=3)    1.00x vs naive
+  jzap, schemata                        2.91s   (range 2.86-2.92s, n=3)    6.41x vs naive
+  execution phase only: 17.48s -> 1.69s, 10.37x
   verdicts identical: True  (naive {'KILLED': 835, 'NO_COVERAGE': 120, 'SURVIVED': 125})
   Schemata compiles every mutant of a class in at once, so selecting one is a
   field write rather than a class redefinition -- which makes the JVM re-verify
   the class and discard its compiled code, once per mutant.
 
 S1b thread scaling (20 cores available)
-  jzap, 1 thread(s)                     8.53s   (range 8.08-8.62s, n=3)    1.00x vs 1 thread
-  jzap, 2 thread(s)                     5.40s   (range 5.36-5.41s, n=3)    1.58x vs 1 thread
-  jzap, 4 thread(s)                     4.47s   (range 4.45-4.48s, n=3)    1.91x vs 1 thread
-  jzap, 20 thread(s)                    4.52s   (range 4.43-4.60s, n=3)    1.89x vs 1 thread
-  fastest at 4 thread(s), 6.62x PIT
+  jzap, 1 thread(s)                     2.90s   (range 2.89-2.90s, n=3)    1.00x vs 1 thread
+  jzap, 2 thread(s)                     2.55s   (range 2.52-2.58s, n=3)    1.14x vs 1 thread
+  jzap, 4 thread(s)                     2.60s   (range 2.47-2.62s, n=3)    1.11x vs 1 thread
+  jzap, 20 thread(s)                    2.55s   (range 2.52-2.55s, n=3)    1.14x vs 1 thread
+  fastest at 20 thread(s), 11.04x PIT
   Scaling is sublinear because the coverage phase is serial and this fixture
   has only 40 classes: work is partitioned by class, so beyond a handful of
   workers each one pays JVM startup for very little work.
 
 S3  diff run, one changed line
   target: bench/Unit0.java line 22, 6 mutants in scope of 1080 total
-  jzap (patch-scoped)                   1.59s   (range 1.56-1.59s, n=3)
-  5.6x faster than its own full run
+  jzap (patch-scoped)                   1.44s   (range 1.44-1.44s, n=3)
+  2.0x faster than its own full run
   Not compared against PIT: PIT's free scoping works at changed-file
   granularity and needs a git repository, so it would be doing a different
   amount of work. Line-level scoping in the PIT ecosystem is arcmutate's,
   which is commercial and unmeasured here.
 
 S5  re-run with no changes, cache warm
-  jzap                                  0.43s   (range 0.42-0.43s, n=3)
-  4.8% of a full run; 20.9x faster
+  jzap                                  0.42s   (range 0.42-0.42s, n=3)
+  14.3% of a full run; 7.0x faster
 
 S6  re-run after one class was recompiled
-  jzap                                  1.75s   (range 1.72-1.77s, n=3)
-  4.1x the no-change run, and still 5.1x faster than a full run
+  jzap                                  1.58s   (range 1.57-1.58s, n=3)
+  3.8x the no-change run, and still 1.8x faster than a full run
   The cache is restored to its pre-change state before each repetition, so
   every measured run is genuinely the first one after the change.
   The change is to a method no test covers, so no verdict moves: what this

@@ -15,6 +15,8 @@ An ultra-fast, diff-aware mutation testing tool for Java and Kotlin.
   and performance harness: corpus, mutant normalisation, agreement matrix, triage
   discipline, benchmark scenarios and fairness rules.
 - [bench-report.txt](bench-report.txt) — the most recent benchmark output, verbatim.
+- [profiling.md](profiling.md) — where the time goes, what was done about it, and which leads
+  turned out to be closed.
 - [troubleshooting.md](troubleshooting.md) — the failures people actually hit, and what each means.
 - [compatibility.md](compatibility.md) — what jzap has been run against, rather than what it might
   work with.
