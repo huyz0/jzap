@@ -2,6 +2,7 @@ package io.github.huyz0.jzap.minion;
 
 import io.github.huyz0.jzap.agent.ClassOverrides;
 import io.github.huyz0.jzap.agent.CoverageRecorder;
+import io.github.huyz0.jzap.agent.LoopGuard;
 import io.github.huyz0.jzap.agent.JzapAgent;
 import io.github.huyz0.jzap.wire.Channel;
 import io.github.huyz0.jzap.wire.Wire;
@@ -109,15 +110,20 @@ public final class Minion {
         String testId = channel.readString();
         requireHarness();
         CoverageRecorder.drain();
+        // Counting without a limit: this run is establishing what the unmutated code needs.
+        LoopGuard.arm(0);
         long start = System.nanoTime();
         TestHarness.Outcome outcome = harness.run(List.of(testId), false);
         long millis = (System.nanoTime() - start) / 1_000_000L;
+        long ticks = LoopGuard.ticks();
+        LoopGuard.disarm();
         int[] probes = CoverageRecorder.drain();
 
         channel.writeByte(Wire.RESP_OK);
         channel.writeBool(outcome.passed());
         channel.writeString(outcome.failureMessage() == null ? "" : outcome.failureMessage());
         channel.writeLong(millis);
+        channel.writeLong(ticks);
         channel.writeInt(probes.length);
         for (int p : probes) {
             channel.writeInt(p);
@@ -144,15 +150,24 @@ public final class Minion {
 
     private void runTests(Channel channel) throws IOException {
         int count = channel.readInt();
+        long iterationLimit = channel.readLong();
         List<String> tests = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             tests.add(channel.readString());
         }
         requireHarness();
-        TestHarness.Outcome outcome = harness.run(tests, true);
+        TestHarness.Outcome outcome;
+        LoopGuard.arm(iterationLimit);
+        try {
+            outcome = harness.run(tests, true);
+        } finally {
+            LoopGuard.disarm();
+        }
 
         byte code;
-        if (outcome.nonViable()) {
+        if (outcome.runaway()) {
+            code = Wire.OUTCOME_RUNAWAY;
+        } else if (outcome.nonViable()) {
             code = Wire.OUTCOME_NON_VIABLE;
         } else if (outcome.passed()) {
             code = Wire.OUTCOME_ALL_PASSED;

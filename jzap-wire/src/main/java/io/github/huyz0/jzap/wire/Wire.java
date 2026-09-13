@@ -36,4 +36,11 @@ public final class Wire {
     public static final byte OUTCOME_FAILED = 1;
     /** The mutated class could not be used at all, e.g. it failed verification. */
     public static final byte OUTCOME_NON_VIABLE = 2;
+    /**
+     * The mutated code looped far past what the original needed.
+     *
+     * <p>Distinct from a wall-clock timeout: this verdict is reached by counting iterations, so
+     * it is the same on every machine.
+     */
+    public static final byte OUTCOME_RUNAWAY = 3;
 }

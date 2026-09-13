@@ -372,7 +372,18 @@ invocations — soundly.
 
 ## M10 · Coverage-driven selection, ordering, and hit-probe timeouts
 
-**Not started.**
+**Two of three done.** Kill-test-first ordering from the cache, and hit-probe loop detection as
+the primary hang signal. Coverage remains at **line** granularity; block granularity with
+exception-correct attribution is the one part still outstanding.
+
+Loop detection counts back edges rather than watching the clock. The limit is ten times what the
+unmutated code needed on the same tests, measured during the coverage run, with a floor so code
+that barely loops still has room. The wall-clock timeout stays as a backstop for what counting
+cannot see: a mutant that blocks rather than loops, or code that catches `Throwable`.
+
+The payoff is determinism. A run with a one-millisecond wall-clock budget and one with thirty
+seconds now produce byte-identical reports, which is the property the Gradle build cache needs
+and which no amount of timing tolerance could have given.
 
 **Goal.** Run the fewest tests that can decide each mutant, and decide hangs
 deterministically.

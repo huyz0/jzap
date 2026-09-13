@@ -50,6 +50,15 @@ sorted sections, so a diff of it shows what changed.
 Opt-in rather than on by default: a cache whose whole question is whether reuse is sound should
 not start reusing without being asked.
 
+**Deterministic hang detection.** A mutant that never returns is found by counting loop
+iterations, not by watching the clock: the limit is ten times what the unmutated code needed on
+the same tests. A run with a one-millisecond wall-clock budget and one with thirty seconds produce
+byte-identical reports. The wall-clock timeout remains as a backstop for mutants that block rather
+than loop, and for code that catches `Throwable`.
+
+**Kill-test-first ordering.** When the cache knows which test killed a mutant last time, that test
+runs first. Early exit means everything tried before the killing test is wasted work.
+
 **Parallel execution.** Mutants are partitioned by class across a pool of analysis JVMs, so a
 worker keeps its classes loaded and JIT-warmed rather than re-paying startup per mutant. Verdicts
 and report bytes are asserted identical at 1, 2 and 8 threads, because thread count leaking into
@@ -153,7 +162,7 @@ differentially tested against.
 |---|---|
 | Mutant schemata (compile once, all mutants as guarded branches) | M8b |
 | Warm daemon with in-JVM mutant switching and static-state reset | M9 |
-| Block-granularity coverage, kill-test-first ordering, hit-probe timeouts | M10 |
+| Block-granularity coverage | M10 |
 | Arid-node suppression, one-per-line, TCE dedup, extreme mutation | M12 |
 | Kotlin junk-mutant handling and inline functions | M15, M16 |
 | Maven plugin | M19 |
@@ -169,9 +178,9 @@ runs against the hand-written fixture only), and the JUnit 4 and TestNG adapters
   exception-correct attribution is M10.
 - **Static state between mutants** is bounded by recycling the analysis JVM every
   `maxMutantsPerMinion` mutants, not by resetting it. Proper reset is M9.
-- **Timeouts are wall-clock based**, which makes a `TIMED_OUT` verdict non-deterministic. It
-  is therefore reported as a distinct status and will never be cached. Hit-probe detection is
-  M10, and it is a prerequisite for the Gradle build cache being sound.
+- **`TIMED_OUT` is still never cached.** Loop detection is deterministic, but the wall-clock
+  backstop that catches blocking mutants is not, and the two are not distinguished at the point
+  the cache is written. The verdict itself is reproducible; only its reuse is withheld.
 - **Renames are not followed** in git diffs. A renamed file's every line looks changed, which
   would flood a pull request with mutants for code nobody touched.
 - **Test classes are never mutated**, because only a module's `mutableCodePaths` are scanned.

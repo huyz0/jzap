@@ -107,7 +107,9 @@ public final class MutantCache {
      * @param key             hash over every scanned class and test class
      * @param classesCovered  classes the map has entries for; a narrower run records fewer
      * @param testsByLocation {@code class:line} to the tests that execute it
-     * @param durations       test id to its baseline duration, which timeouts are derived from
+     * @param durations       test id to its baseline duration, the wall-clock backstop's input
+     * @param loopIterations  test id to the loop iterations it needed unmutated, which the
+     *                        runaway-loop limit is derived from
      * @param failingTests    tests that failed with no mutant applied
      */
     public record CachedCoverage(
@@ -115,6 +117,7 @@ public final class MutantCache {
             Set<String> classesCovered,
             Map<String, Set<String>> testsByLocation,
             Map<String, Long> durations,
+            Map<String, Long> loopIterations,
             List<String> failingTests) {
     }
 
@@ -158,6 +161,7 @@ public final class MutantCache {
             Set<String> coveredClasses = new LinkedHashSet<>();
             Map<String, Set<String>> testsByLocation = new LinkedHashMap<>();
             Map<String, Long> durations = new LinkedHashMap<>();
+            Map<String, Long> iterations = new LinkedHashMap<>();
             List<String> failing = new ArrayList<>();
 
             for (String line : lines.subList(separator + 1, lines.size())) {
@@ -183,6 +187,10 @@ public final class MutantCache {
                     durations.put(parts[1], Long.parseLong(parts[2]));
                     continue;
                 }
+                if (parts[0].equals("test-iterations") && parts.length == 3) {
+                    iterations.put(parts[1], Long.parseLong(parts[2]));
+                    continue;
+                }
                 if (parts[0].equals("failing-test") && parts.length == 2) {
                     failing.add(parts[1]);
                     continue;
@@ -200,7 +208,7 @@ public final class MutantCache {
             }
             if (coverageKey != null) {
                 cache.storedCoverage = new CachedCoverage(coverageKey, coveredClasses,
-                        testsByLocation, durations, failing);
+                        testsByLocation, durations, iterations, failing);
             }
         } catch (IOException | IllegalArgumentException e) {
             cache.discardReason = "could not read the cache: " + e.getMessage();
@@ -281,6 +289,18 @@ public final class MutantCache {
         this.recordedCoverage = coverage;
     }
 
+    /**
+     * The test that killed this mutant last time, whether or not the entry is reusable.
+     *
+     * <p>Even an entry too stale to reuse is worth this much: the test that killed a mutant
+     * before is overwhelmingly likely to kill it again, and early exit means everything tried
+     * before it is wasted work.
+     */
+    public synchronized Optional<String> previousKillingTest(MutantKey key) {
+        Entry entry = reusable.get(key.asString());
+        return entry == null ? Optional.empty() : Optional.ofNullable(entry.killingTest());
+    }
+
     /** Records an outcome, unless it is one that cannot be reproduced. */
     public synchronized void record(Mutant analysed, String classHash, List<String> coveringTests,
                        Map<String, String> testClassHashes) {
@@ -332,6 +352,9 @@ public final class MutantCache {
             new TreeMap<>(coverage.durations()).forEach((test, millis) ->
                     text.append(String.join("\t", "test-duration", test,
                             Long.toString(millis))).append('\n'));
+            new TreeMap<>(coverage.loopIterations()).forEach((test, ticks) ->
+                    text.append(String.join("\t", "test-iterations", test,
+                            Long.toString(ticks))).append('\n'));
             coverage.failingTests().stream().sorted().forEach(test ->
                     text.append(String.join("\t", "failing-test", test)).append('\n'));
         }

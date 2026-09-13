@@ -1,5 +1,6 @@
 package io.github.huyz0.jzap.minion;
 
+import io.github.huyz0.jzap.agent.RunawayLoopError;
 import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.launcher.Launcher;
@@ -32,9 +33,11 @@ final class TestHarness {
      *                    genuine test failure
      * @param failureMessage first failure's type and message, so a baseline failure can be
      *                    reported to the user instead of merely counted
+     * @param runaway     the loop guard tripped: the mutant loops far past what the original
+     *                    code needed, decided by counting rather than by the clock
      */
     record Outcome(boolean passed, String failingTest, int testsRun, boolean nonViable,
-                   String failureMessage) {
+                   String failureMessage, boolean runaway) {
     }
 
     private final List<Path> classpathRoots;
@@ -80,20 +83,25 @@ final class TestHarness {
                     .build();
             try {
                 launcher.execute(request, listener);
+            } catch (RunawayLoopError e) {
+                return new Outcome(false, testId, run + 1, false, describe(e), true);
             } catch (LinkageError e) {
-                return new Outcome(false, testId, run + 1, true, describe(e));
+                return new Outcome(false, testId, run + 1, true, describe(e), false);
             }
             run++;
+            if (listener.runaway) {
+                return new Outcome(false, testId, run, false, listener.failureMessage, true);
+            }
             if (listener.failed) {
                 if (listener.nonViable) {
-                    return new Outcome(false, testId, run, true, listener.failureMessage);
+                    return new Outcome(false, testId, run, true, listener.failureMessage, false);
                 }
                 if (stopOnFirstFailure) {
-                    return new Outcome(false, testId, run, false, listener.failureMessage);
+                    return new Outcome(false, testId, run, false, listener.failureMessage, false);
                 }
             }
         }
-        return new Outcome(true, null, run, false, null);
+        return new Outcome(true, null, run, false, null, false);
     }
 
     private static String describe(Throwable t) {
@@ -104,6 +112,7 @@ final class TestHarness {
 
         private boolean failed;
         private boolean nonViable;
+        private boolean runaway;
         private String failureMessage;
 
         @Override
@@ -115,6 +124,13 @@ final class TestHarness {
             result.getThrowable().ifPresent(t -> {
                 if (failureMessage == null) {
                     failureMessage = describe(t);
+                }
+                // A runaway loop is not a test failure: the test never got to decide anything.
+                for (Throwable c = t; c != null && c != c.getCause(); c = c.getCause()) {
+                    if (c instanceof RunawayLoopError) {
+                        runaway = true;
+                        return;
+                    }
                 }
                 if (isLinkageProblem(t)) {
                     nonViable = true;

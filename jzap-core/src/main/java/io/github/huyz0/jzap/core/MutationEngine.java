@@ -46,7 +46,7 @@ public final class MutationEngine {
     public List<Mutant> discover(String moduleId, byte[] classBytes) {
         ClassReader reader = new ClassReader(classBytes);
         MutationContext ctx = MutationContext.collecting(moduleId, binaryName(reader));
-        reader.accept(new MutatingClassVisitor(null, ctx, mutators), ClassReader.EXPAND_FRAMES);
+        reader.accept(new MutatingClassVisitor(null, ctx, mutators, false), ClassReader.EXPAND_FRAMES);
         return filter(ctx.collected(), classBytes);
     }
 
@@ -91,7 +91,7 @@ public final class MutationEngine {
         // bytecode another has already changed. That is what keeps ordinals stable between
         // discovery and application.
         List<Mutator> only = List.of(Mutators.byId(key.mutator()));
-        reader.accept(new MutatingClassVisitor(writer, ctx, only), ClassReader.EXPAND_FRAMES);
+        reader.accept(new MutatingClassVisitor(writer, ctx, only, true), ClassReader.EXPAND_FRAMES);
         if (!ctx.applied()) {
             throw new IllegalStateException("mutant " + key.asString()
                     + " does not match the supplied bytecode for " + key.className()
@@ -110,10 +110,14 @@ public final class MutationEngine {
         private final MutationContext ctx;
         private final List<Mutator> mutators;
 
-        MutatingClassVisitor(ClassVisitor next, MutationContext ctx, List<Mutator> mutators) {
+        private final boolean guardLoops;
+
+        MutatingClassVisitor(ClassVisitor next, MutationContext ctx, List<Mutator> mutators,
+                             boolean guardLoops) {
             super(Opcodes.ASM9, next);
             this.ctx = ctx;
             this.mutators = mutators;
+            this.guardLoops = guardLoops;
         }
 
         @Override
@@ -130,7 +134,9 @@ public final class MutationEngine {
                 return writer;
             }
             ctx.enterMethod(name, descriptor);
-            MethodVisitor chain = writer;
+            // Guarding only mutated classes is enough: a mutant can only make a loop run away by
+            // changing code in the class it was seeded into.
+            MethodVisitor chain = guardLoops ? new BackEdgeInstrumenter(writer) : writer;
             // Built inside out, so the line tracker ends up outermost and every mutator sees
             // the current line before it decides anything.
             for (int i = mutators.size() - 1; i >= 0; i--) {

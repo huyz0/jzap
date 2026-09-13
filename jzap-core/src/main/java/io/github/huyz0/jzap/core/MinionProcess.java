@@ -34,8 +34,12 @@ public final class MinionProcess implements AutoCloseable {
         }
     }
 
+    /**
+     * @param loopIterations back edges executed by this test with no mutant applied, which is
+     *                       what a mutant's iteration limit is derived from
+     */
     public record TestCoverage(boolean passed, String failureMessage, long durationMillis,
-                               int[] probeIds) {
+                               long loopIterations, int[] probeIds) {
     }
 
     public record MutantOutcome(byte code, String failingTest, String failureMessage,
@@ -144,13 +148,14 @@ public final class MinionProcess implements AutoCloseable {
             boolean passed = channel.readBool();
             String failureMessage = channel.readString();
             long millis = channel.readLong();
+            long ticks = channel.readLong();
             int n = channel.readInt();
             int[] probes = new int[n];
             for (int i = 0; i < n; i++) {
                 probes[i] = channel.readInt();
             }
             return new TestCoverage(passed, failureMessage.isEmpty() ? null : failureMessage,
-                    millis, probes);
+                    millis, ticks, probes);
         } catch (SocketTimeoutException e) {
             throw new HungException("test " + testId + " did not finish within " + timeoutMillis + "ms");
         } catch (IOException e) {
@@ -174,10 +179,18 @@ public final class MinionProcess implements AutoCloseable {
         expectOk("clearing mutants");
     }
 
-    public MutantOutcome runTests(List<String> testIds, int timeoutMillis) {
+    /**
+     * @param iterationLimit loop iterations past which the mutant is declared runaway. Derived
+     *                       from what the unmutated code needed, so the verdict does not depend
+     *                       on how fast the machine is.
+     * @param timeoutMillis  wall-clock backstop, for the cases the guard cannot see: a mutant
+     *                       that blocks rather than loops, or code that catches Throwable
+     */
+    public MutantOutcome runTests(List<String> testIds, long iterationLimit, int timeoutMillis) {
         channel.readTimeout(timeoutMillis);
         channel.writeByte(Wire.CMD_RUN_TESTS);
         channel.writeInt(testIds.size());
+        channel.writeLong(iterationLimit);
         for (String id : testIds) {
             channel.writeString(id);
         }

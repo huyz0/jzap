@@ -43,7 +43,9 @@ public final class CoverageInstrumenter {
                 if ((access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) != 0) {
                     return mv;
                 }
-                return new ProbeInsertingMethodVisitor(mv, binaryName, index);
+                // Back-edge counting rides along with coverage so the baseline iteration count
+                // is measured from the same run, on the same code, as everything else.
+                return new ProbeInsertingMethodVisitor(new BackEdgeInstrumenter(mv), binaryName, index);
             }
         }, ClassReader.EXPAND_FRAMES);
         return writer.toByteArray();

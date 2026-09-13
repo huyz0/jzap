@@ -5,6 +5,7 @@ import io.github.huyz0.jzap.model.CacheConfig;
 import io.github.huyz0.jzap.model.ChangedLines;
 import io.github.huyz0.jzap.model.ModuleModel;
 import io.github.huyz0.jzap.model.Mutant;
+import io.github.huyz0.jzap.model.MutantKey;
 import io.github.huyz0.jzap.model.MutantStatus;
 import io.github.huyz0.jzap.model.ProjectModel;
 import io.github.huyz0.jzap.model.Scope;
@@ -296,8 +297,10 @@ public final class AnalysisEngine {
                 return new Coverage(
                         new LinkedHashMap<>(reused.testsByLocation()),
                         new LinkedHashMap<>(reused.durations()),
+                        new LinkedHashMap<>(reused.loopIterations()),
                         new ArrayList<>(reused.failingTests()),
-                        new ArrayList<>(reused.durations().keySet()));
+                        new ArrayList<>(reused.durations().keySet()),
+                        cache::previousKillingTest);
             }
 
             listener.phase("coverage", module.id());
@@ -314,6 +317,7 @@ public final class AnalysisEngine {
 
             Map<String, Set<String>> testsByLocation = new LinkedHashMap<>();
             Map<String, Long> durations = new LinkedHashMap<>();
+            Map<String, Long> loopIterations = new LinkedHashMap<>();
             List<String> failing = new ArrayList<>();
             List<String> testIds;
 
@@ -331,6 +335,7 @@ public final class AnalysisEngine {
                         throw new WireException("coverage run aborted: " + e.getMessage(), e);
                     }
                     durations.put(testId, result.durationMillis());
+                    loopIterations.put(testId, result.loopIterations());
                     if (!result.passed()) {
                         failing.add(testId);
                         listener.warning("test already fails before any mutant is applied: " + testId
@@ -353,9 +358,11 @@ public final class AnalysisEngine {
                         + "reported as killed by a failure that has nothing to do with it.");
             }
             cache.recordCoverage(new MutantCache.CachedCoverage(
-                    coverageKey(), mutatedClasses, testsByLocation, durations, failing));
+                    coverageKey(), mutatedClasses, testsByLocation, durations, loopIterations,
+                    failing));
             coverageMillis = millisSince(start);
-            return new Coverage(testsByLocation, durations, failing, testIds);
+            return new Coverage(testsByLocation, durations, loopIterations, failing, testIds,
+                    cache::previousKillingTest);
         }
 
         private void execute(List<Mutant> mutants, Map<String, byte[]> bytesByClass, Coverage coverage) {
@@ -510,13 +517,15 @@ public final class AnalysisEngine {
                     byte[] mutated = mutation.apply(bytesByClass.get(mutant.key().className()),
                             mutant.key());
                     minion.setOverride(mutant.key().className(), mutated);
-                    MinionProcess.MutantOutcome outcome =
-                            minion.runTests(selected, coverage.timeoutFor(selected, model));
+                    MinionProcess.MutantOutcome outcome = minion.runTests(selected,
+                            coverage.iterationLimitFor(selected),
+                            coverage.timeoutFor(selected, model));
                     testsRun = outcome.testsRun();
                     status = switch (outcome.code()) {
                         case Wire.OUTCOME_FAILED -> MutantStatus.KILLED;
                         case Wire.OUTCOME_ALL_PASSED -> MutantStatus.SURVIVED;
                         case Wire.OUTCOME_NON_VIABLE -> MutantStatus.NON_VIABLE;
+                        case Wire.OUTCOME_RUNAWAY -> MutantStatus.TIMED_OUT;
                         default -> MutantStatus.RUN_ERROR;
                     };
                     if (status == MutantStatus.KILLED) {
@@ -569,15 +578,18 @@ public final class AnalysisEngine {
     private record Coverage(
             Map<String, Set<String>> testsByLocation,
             Map<String, Long> durations,
+            Map<String, Long> loopIterations,
             List<String> failingTests,
-            List<String> testIds) {
+            List<String> testIds,
+            java.util.function.Function<MutantKey, Optional<String>> previousKillingTest) {
 
         /**
-         * Tests that execute the mutated line, fastest first.
+         * Tests that execute the mutated line: the one that killed it last time first, then the
+         * rest cheapest first.
          *
-         * <p>Cheapest test first is a crude ordering: kill-test-first from history is the real
-         * answer and is scheduled for M10. Even so, ordering matters because early exit means
-         * only the tests before the first failure are ever paid for.
+         * <p>Ordering matters because of early exit. Everything tried before the test that
+         * actually kills a mutant is wasted, and the test that killed it in the previous run is
+         * overwhelmingly likely to kill it again.
          */
         List<String> selectFor(Mutant mutant) {
             Set<String> tests = testsByLocation.get(
@@ -585,10 +597,27 @@ public final class AnalysisEngine {
             if (tests == null) {
                 return List.of();
             }
+            String killedItLastTime = previousKillingTest.apply(mutant.key()).orElse(null);
             return tests.stream()
                     .filter(t -> !failingTests.contains(t))
-                    .sorted(Comparator.comparingLong(t -> durations.getOrDefault(t, 0L)))
+                    .sorted(Comparator
+                            .comparing((String t) -> !t.equals(killedItLastTime))
+                            .thenComparingLong(t -> durations.getOrDefault(t, 0L)))
                     .toList();
+        }
+
+        /**
+         * Loop iterations past which a mutant is declared runaway.
+         *
+         * <p>Ten times what the unmutated code needed, with a floor so that code which loops
+         * barely at all still has room. A mutant that does an order of magnitude more work than
+         * the original is not doing the same job slowly; it is not stopping.
+         */
+        long iterationLimitFor(List<String> selected) {
+            long baseline = selected.stream()
+                    .mapToLong(t -> loopIterations.getOrDefault(t, 0L))
+                    .max().orElse(0L);
+            return Math.max(1_000_000L, baseline * 10);
         }
 
         int timeoutFor(List<String> selected, ProjectModel model) {
