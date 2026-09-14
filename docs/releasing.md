@@ -13,9 +13,10 @@ claiming to be verified.
 | `io.github.huyz0:jzap-maven-plugin` | Maven Central, published by Maven | Built by Maven because plugin descriptors are |
 | Fixtures, `tools/`, `jzap-e2e` | Nowhere | They are how jzap is tested, not what it is |
 
-The namespace is `io.github.huyz0`, verified by the GitHub account of that name. Java packages stay
-`io.github.huyz0.jzap.*`: Central verifies the groupId, not package names, and renaming them would be a large
-change with no benefit to anyone consuming the artefacts.
+The namespace is `io.github.huyz0`, verified by the GitHub account of that name. Java packages
+match it — `io.github.huyz0.jzap.*` — so a coordinate can be guessed from an import and the other
+way round. Central verifies only the groupId, so the two were briefly allowed to differ; making
+them agree cost one mechanical change and removed a question every new reader would have asked.
 
 ## One-time setup
 

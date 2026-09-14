@@ -25,14 +25,16 @@ achieves today. The report lands in `build/reports/coverage/html`.
   while saying nothing about whether jzap is tested.
 - **Two things cannot be measured from the test JVM at all**, and are excluded rather than counted
   as zero, which would put a false floor under every figure:
-  - `io.github.huyz0.jzap.minion` exists only to run inside a forked JVM. `MinionIntegrationTest` drives a live
-    one over the wire, so it is tested; it cannot be observed from here. Attaching a second JaCoCo
+  - `io.github.huyz0.jzap.minion` exists only to run inside a forked JVM.
+    `MinionIntegrationTest` drives a live one over the wire, so it is tested; it cannot be
+    observed from here. Attaching a second JaCoCo
     agent to each minion would change the thing under test — the minion asserts it is
     dependency-free, and its class-redefinition path is exactly what another bytecode-rewriting
     agent interferes with.
   - `JzapAgent` and `OverrideTransformer` need a real `Instrumentation`, which only a JVM started
-    with `-javaagent` has. The rest of `io.github.huyz0.jzap.agent` is ordinary static state and pure
-    functions, and is measured: the module's own tests run with the shipped agent jar attached, so
+    with `-javaagent` has. The rest of `io.github.huyz0.jzap.agent` is ordinary static state and
+    pure functions, and is measured: the module's own tests run with the shipped agent jar
+    attached, so
     `ClassOverrides` is tested against real class retransformation.
 
 Measurement is aggregated across modules on purpose. The tests that exercise most of `jzap-core`
