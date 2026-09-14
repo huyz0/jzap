@@ -34,6 +34,12 @@ public final class NativeJsonReporter implements Reporter {
         json.key("testsDiscovered").value(result.testsDiscovered());
         json.key("mutationScore").value(result.mutationScore());
         json.key("testStrength").value(result.testStrength());
+        // The ratios above are over these, not over every mutant in the list below, so a consumer
+        // that wants to recompute or aggregate them needs the denominators as well.
+        json.key("scoredMutants").value(result.scored());
+        json.key("unscoredMutants").value(result.unscored());
+        json.key("coveredMutants").value(result.covered());
+        json.key("detectedMutants").value(result.detected());
 
         json.key("failingBaselineTests").startArray();
         for (String test : result.failingBaselineTests()) {

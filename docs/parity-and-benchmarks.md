@@ -85,6 +85,13 @@ Three comparisons, in increasing strictness:
    `KILLED / SURVIVED / NO_COVERAGE / TIMED_OUT / NON_VIABLE / RUN_ERROR`. Off-diagonal
    cells are the interesting output. `KILLED` vs `SURVIVED` disagreement is the most
    serious class and is a release blocker until explained.
+   Verdicts are compared per mutant and never as a score, and that distinction matters for
+   two of those six statuses. PIT's `DetectionStatus.isDetected` returns true for
+   `NON_VIABLE` and `RUN_ERROR`, so PIT's percentage counts them as killed; jzap leaves them
+   out of its percentage entirely (see the scoring note in [status.md](status.md)). The two
+   tools can therefore agree on every single verdict and still print different scores for the
+   same run. Comparing the headline numbers would report a difference that is not one, and
+   would hide a real verdict disagreement behind an arithmetic coincidence.
 3. **Killing test.** With PIT run under `--fullMutationMatrix`, compare the set of tests
    that kill each mutant. Disagreement here doesn't necessarily mean a wrong verdict, but
    it reliably surfaces coverage-attribution and test-selection bugs — which is exactly

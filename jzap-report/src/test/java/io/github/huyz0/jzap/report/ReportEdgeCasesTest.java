@@ -216,6 +216,64 @@ class ReportEdgeCasesTest {
         assertTrue(text.contains("SURVIVED") || text.contains("survived"), text);
     }
 
+    // -------------------------------------------------- mutants outside the score
+
+    @Test
+    void consoleSaysWhichMutantsAreOutsideBothPercentages(@TempDir Path dir) {
+        String text = console(resultOf(List.of(
+                mutant(1, MutantStatus.KILLED),
+                mutant(2, MutantStatus.SURVIVED),
+                mutant(3, MutantStatus.NON_VIABLE),
+                mutant(4, MutantStatus.RUN_ERROR)), List.of()), dir);
+
+        // Six of the nine lines of totals reconcile on their own; these are the ones that do not,
+        // so a reader comparing "total 4" against a score over 2 has an answer on the page.
+        assertTrue(text.contains("total            4"), text);
+        assertTrue(text.contains("Mutation score 50.0%"), text);
+        assertTrue(text.contains("2 of 4 mutants are outside both figures"), text);
+        assertTrue(text.contains("1 non-viable"), text);
+        assertTrue(text.contains("1 run error"), text);
+    }
+
+    @Test
+    void consoleSaysNothingAboutExclusionsWhenThereAreNone(@TempDir Path dir) {
+        String text = console(resultOf(List.of(
+                mutant(1, MutantStatus.KILLED),
+                mutant(2, MutantStatus.NO_COVERAGE)), List.of()), dir);
+
+        assertFalse(text.contains("outside both figures"),
+                "an ordinary run must not be told about an exclusion that did not happen");
+    }
+
+    @Test
+    void htmlNamesTheExcludedMutantsSoTheTilesAddUp(@TempDir Path dir) throws Exception {
+        String html = html(resultOf(List.of(
+                mutant(1, MutantStatus.KILLED),
+                mutant(2, MutantStatus.NON_VIABLE)), List.of()), dir, List.of());
+
+        assertTrue(html.contains("not scored"), html);
+        assertTrue(html.contains("100.0%"), "the score is over the one mutant that was judged");
+    }
+
+    @Test
+    void nativeJsonCarriesTheDenominatorsAndNotOnlyTheRatios(@TempDir Path dir) throws Exception {
+        new NativeJsonReporter().write(resultOf(List.of(
+                mutant(1, MutantStatus.KILLED),
+                mutant(2, MutantStatus.SURVIVED),
+                mutant(3, MutantStatus.NO_COVERAGE),
+                mutant(4, MutantStatus.RUN_ERROR)), List.of()),
+                ReportContext.of(dir, List.of()));
+        String json = Files.readString(dir.resolve(NativeJsonReporter.FILE_NAME),
+                StandardCharsets.UTF_8);
+
+        // Without these a consumer aggregating several runs can only weight by total mutants,
+        // which is not what either percentage was computed over.
+        assertTrue(json.contains("\"scoredMutants\": 3"), json);
+        assertTrue(json.contains("\"unscoredMutants\": 1"), json);
+        assertTrue(json.contains("\"coveredMutants\": 2"), json);
+        assertTrue(json.contains("\"detectedMutants\": 1"), json);
+    }
+
     private static long count(String text, String needle) {
         return text.split(needle, -1).length - 1L;
     }

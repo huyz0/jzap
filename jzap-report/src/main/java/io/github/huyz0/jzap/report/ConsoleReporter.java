@@ -86,10 +86,41 @@ final class ConsoleReporter implements Reporter {
         out.println();
         out.printf("Mutation score %.1f%%  (test strength %.1f%%, ignoring uncovered mutants)%n",
                 result.mutationScore(), result.testStrength());
+        printExclusions(result);
         result.timings().forEach((phase, millis) -> {
             if (!phase.startsWith("module:")) {
                 out.printf("  %-10s %6d ms%n", phase, millis);
             }
         });
+    }
+
+    /**
+     * Names the mutants that are in the totals but in neither percentage.
+     *
+     * <p>Without this the two blocks above do not add up and nothing says why. A run where a
+     * hundred mutants would not verify is a very different run from one where none did, and the
+     * score is identical in both.
+     */
+    private void printExclusions(AnalysisResult result) {
+        long unscored = result.unscored();
+        if (unscored == 0) {
+            return;
+        }
+        List<String> reasons = new ArrayList<>();
+        add(reasons, result.count(MutantStatus.NON_VIABLE), "non-viable");
+        add(reasons, result.count(MutantStatus.RUN_ERROR), "run error");
+        long unanalysed = unscored
+                - result.count(MutantStatus.NON_VIABLE) - result.count(MutantStatus.RUN_ERROR);
+        add(reasons, unanalysed, "not analysed");
+        out.printf("  %d of %d mutants are outside both figures (%s): the tests were never given%n",
+                unscored, result.mutants().size(), String.join(", ", reasons));
+        out.println("  the chance to detect them, so counting them either way would misreport"
+                + " the suite.");
+    }
+
+    private static void add(List<String> reasons, long count, String label) {
+        if (count > 0) {
+            reasons.add(count + " " + label);
+        }
     }
 }

@@ -159,6 +159,17 @@ into too:
   them on the bench fixture produced 80 extra mutants of which 79 were killed, with the slowest
   running to integer wraparound before dying. PIT filters the same case. The filter is
   switchable with `--mutate-loop-counters`, because "not worth seeding" is a judgement.
+- **Mutants the tests never judged are outside the score.** A mutant the JVM refused to load
+  (`NON_VIABLE`) or whose analysis broke (`RUN_ERROR`) was never actually run against a test.
+  Counting it as undetected blames the suite for jzap's problem; counting it as detected, which
+  is what PIT does, credits the suite for a fault it never saw. Both answers distort the figure,
+  in opposite directions, so these mutants are in neither the numerator nor the denominator of
+  the mutation score or of test strength. They are still counted and reported, and the console and HTML
+  reports name them so the totals add up. This also makes jzap's own score agree with the
+  mutation-testing-elements report it already writes, where the two are `CompileError` and
+  `RuntimeError` and the score is defined over valid mutants only. A `RUN_ERROR` additionally
+  exits 3 and fails the build: an honest score over whatever did work must not let a broken
+  analysis pass a threshold quietly.
 - **A red baseline is detected and reported.** If a test already fails before any mutant is
   applied, every mutant it covers would look killed for an unrelated reason. Those tests are
   excluded from selection and reported with their failure message.

@@ -101,6 +101,12 @@ jzap mutators                             # the available mutators
 jzap run -m model.json --dry-run          # resolved scope and classpaths, then stop
 ```
 
+`jzap run` exits `0` when the run met its bar, `1` when it did not (`--threshold` or
+`--fail-on-survivors`), `2` on a usage error and `3` when the analysis itself failed. A
+mutant the JVM refuses to load (`NON_VIABLE`) or one whose analysis breaks (`RUN_ERROR`) is
+counted and reported but left out of both percentages, since the tests were never given the
+chance to detect it; a `RUN_ERROR` exits `3` rather than scoring the rest and passing quietly.
+
 ## How it fits together
 
 The engine knows nothing about Gradle, Maven, or git. A build tool computes a **project

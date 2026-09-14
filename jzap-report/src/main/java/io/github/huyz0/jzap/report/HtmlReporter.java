@@ -88,8 +88,12 @@ final class HtmlReporter implements Reporter {
                 .append(total("test strength", String.format(Locale.ROOT, "%.1f%%", result.testStrength())))
                 .append(total("killed", result.count(MutantStatus.KILLED)))
                 .append(total("survived", result.count(MutantStatus.SURVIVED)))
-                .append(total("no coverage", result.count(MutantStatus.NO_COVERAGE)))
-                .append(total("total", result.mutants().size()))
+                .append(total("no coverage", result.count(MutantStatus.NO_COVERAGE)));
+        if (result.unscored() > 0) {
+            // Named so the tiles add up: these are in the total but in neither percentage.
+            html.append(total("not scored", result.unscored()));
+        }
+        html.append(total("total", result.mutants().size()))
                 .append("</div>\n");
 
         byFile.forEach((file, mutants) -> {

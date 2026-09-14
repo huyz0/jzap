@@ -225,7 +225,25 @@ final class RunCommand implements Callable<Integer> {
     @Spec
     CommandSpec spec;
 
-    private int exitCode(AnalysisResult result) {
+    /**
+     * The process exit code, most specific cause first.
+     *
+     * <p>A {@code RUN_ERROR} is checked before the threshold because it is a different kind of
+     * answer. The mutants it covers are excluded from the score, so a run where the analysis broke
+     * can report a perfectly good percentage over whatever did work and pass a threshold it never
+     * really met. Reporting the score honestly and then exiting 0 would turn a broken run into a
+     * green build, which is worse than either scoring choice this replaces.
+     *
+     * <p>{@code NON_VIABLE} does not fail the run. A mutant the verifier rejects is an ordinary
+     * outcome of mutating bytecode rather than a sign anything went wrong, and it is reported.
+     */
+    int exitCode(AnalysisResult result) {
+        long runErrors = result.count(MutantStatus.RUN_ERROR);
+        if (runErrors > 0) {
+            System.err.println("jzap: the analysis failed for " + runErrors + " mutant(s); the "
+                    + "score above is over the rest and is not the score for this scope");
+            return EXIT_FAILED;
+        }
         if (threshold != null && result.mutationScore() < threshold) {
             System.err.printf("jzap: mutation score %.1f%% is below the threshold of %.1f%%%n",
                     result.mutationScore(), threshold);

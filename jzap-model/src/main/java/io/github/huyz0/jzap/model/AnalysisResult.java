@@ -45,18 +45,44 @@ public record AnalysisResult(
         return mutants.stream().filter(m -> m.status() == status).count();
     }
 
-    /** Mutants with coverage, i.e. those a score can meaningfully be computed over. */
+    /**
+     * Mutants whose outcome is a statement about the test suite, and so the ones a score is a
+     * ratio over.
+     *
+     * <p>Everything except {@code NON_VIABLE}, {@code RUN_ERROR} and mutants not analysed at all;
+     * {@link MutantStatus#isScored()} says why those three leave the ratio rather than landing on
+     * one side of it.
+     */
+    public long scored() {
+        return mutants.stream().filter(m -> m.status() != null && m.status().isScored()).count();
+    }
+
+    /**
+     * Mutants excluded from the score because nothing was learned about the tests from them.
+     *
+     * <p>Reported rather than dropped. A run with a large number here analysed much less than its
+     * mutant count suggests, and the score alone would not show that.
+     */
+    public long unscored() {
+        return mutants.size() - scored();
+    }
+
+    /** Scored mutants with coverage, i.e. those test strength is a ratio over. */
     public long covered() {
-        return mutants.stream().filter(m -> m.status() != null && m.status() != MutantStatus.NO_COVERAGE).count();
+        return mutants.stream()
+                .filter(m -> m.status() != null && m.status().isScored())
+                .filter(m -> m.status() != MutantStatus.NO_COVERAGE)
+                .count();
     }
 
     public long detected() {
         return mutants.stream().filter(m -> m.status() != null && m.status().isDetected()).count();
     }
 
-    /** Mutation score over all mutants, including uncovered ones. */
+    /** Mutation score over every scored mutant, including uncovered ones. */
     public double mutationScore() {
-        return mutants.isEmpty() ? 0.0 : 100.0 * detected() / mutants.size();
+        long scored = scored();
+        return scored == 0 ? 0.0 : 100.0 * detected() / scored;
     }
 
     /** Mutation score over covered mutants only, which is the figure PIT calls test strength. */
