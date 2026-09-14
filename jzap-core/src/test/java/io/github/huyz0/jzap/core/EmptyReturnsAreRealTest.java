@@ -128,6 +128,32 @@ class EmptyReturnsAreRealTest {
         MutantSwitch.deactivate();
     }
 
+    /**
+     * A return type the mutator does not know is a mutant that never gets generated.
+     *
+     * <p>Iterable was absent from the table, so a method returning one was never mutated at all.
+     * That does not fail or warn: it shrinks the inventory, and the score is a ratio over the
+     * inventory. PIT covers Iterable with an empty list, which is what settled it.
+     */
+    @Test
+    void anIterableReturnIsMutated() {
+        String source = """
+                package ex;
+                import java.util.*;
+                public class Iterables {
+                    public Iterable<String> items() { return new ArrayList<>(); }
+                }
+                """;
+        byte[] bytes = InMemoryJavac.compile("ex.Iterables", source).get("ex.Iterables");
+
+        List<String> mutators = MutationEngine.withDefaults().discover(":t", bytes).stream()
+                .map(m -> m.key().mutator())
+                .toList();
+
+        assertTrue(mutators.contains(EmptyReturnsMutator.ID),
+                () -> "a method returning Iterable produced no empty-return mutant: " + mutators);
+    }
+
     @Test
     void everyMutantDiffersFromTheOriginal() {
         byte[] original = InMemoryJavac.compile("ex.Empties", SOURCE).get("ex.Empties");

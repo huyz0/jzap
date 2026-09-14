@@ -31,6 +31,10 @@ public final class EmptyReturnsMutator extends ReturnValueMutator {
             Map.entry("java/util/Set", new Empty("java/util/Set", "of", "()Ljava/util/Set;", false)),
             Map.entry("java/util/Map", new Empty("java/util/Map", "of", "()Ljava/util/Map;", false)),
             Map.entry("java/util/Collection", new Empty("java/util/List", "of", "()Ljava/util/List;", false)),
+            // Iterable was missing, so a method returning one got no mutant at all and its
+            // returned value went untested. PIT covers it, with an empty list, and a mutator that
+            // silently skips a return type understates the inventory rather than failing.
+            Map.entry("java/lang/Iterable", new Empty("java/util/List", "of", "()Ljava/util/List;", false)),
             Map.entry("java/util/stream/Stream", new Empty("java/util/stream/Stream", "empty", "()Ljava/util/stream/Stream;", false)),
             Map.entry("java/lang/Boolean", new Empty("java/lang/Boolean", "FALSE", "Ljava/lang/Boolean;", true)),
             Map.entry("java/lang/Integer", new Empty("java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false)),
@@ -75,6 +79,9 @@ public final class EmptyReturnsMutator extends ReturnValueMutator {
             Map.entry("java/util/Collection", Set.of(
                     "java/util/List.of:()Ljava/util/List;",
                     "java/util/Collections.emptyList:()Ljava/util/List;")),
+            Map.entry("java/lang/Iterable", Set.of(
+                    "java/util/List.of:()Ljava/util/List;",
+                    "java/util/Collections.emptyList:()Ljava/util/List;")),
             Map.entry("java/util/Optional", Set.of("java/util/Optional.empty:()Ljava/util/Optional;")),
             Map.entry("java/util/OptionalInt", Set.of("java/util/OptionalInt.empty:()Ljava/util/OptionalInt;")),
             Map.entry("java/util/OptionalLong", Set.of("java/util/OptionalLong.empty:()Ljava/util/OptionalLong;")),
@@ -94,6 +101,13 @@ public final class EmptyReturnsMutator extends ReturnValueMutator {
 
     /**
      * Whether the value about to be returned is already the empty one for this type.
+     *
+     * <p>Only when it is returned directly. Assigning it to a local first --
+     * {@code List<String> r = List.of(); return r;} -- is not recognised, because this decides
+     * from the instruction before the return and cannot see through a local. PIT's
+     * EquivalentReturnMutationFilter matches the store and the load as a sequence over the whole
+     * method and does catch it, so that shape is a jzap-only false survivor; it is recorded in
+     * docs/status.md rather than left implicit.
      *
      * <p>Three shapes, and all three come out of ordinary source. {@code return ""} is a constant
      * push. {@code return List.of()} and {@code return Boolean.FALSE} are a static call and a

@@ -275,6 +275,22 @@ Two milestones were closed by measurement rather than by code, and the numbers a
   would flood a pull request with mutants for code nobody touched.
 - **Test classes are never mutated**, because only a module's `mutableCodePaths` are scanned.
   This is structural, not a filter that can be switched off.
+- **An already-empty return value is recognised only when it is returned directly.** An
+  `EMPTY_RETURNS` mutant is suppressed where the method already returns the value the mutant
+  would return -- `return List.of()`, `return Optional.empty()`, `return Boolean.FALSE`,
+  `return 0` from a method returning `Integer` -- because such a mutant is the original program
+  and can never be killed. Assigning it to a local first is not recognised:
+
+  ```java
+  List<String> r = List.of();
+  return r;                      // still mutated, and the mutant can never be killed
+  ```
+
+  jzap decides this from the instruction immediately before the return, which cannot see through
+  a local. PIT's `EquivalentReturnMutationFilter` does handle it, by matching the store and the
+  load as a sequence over the whole method, so this is a jzap-only false survivor rather than a
+  shared limitation. Closing it means deciding the same question from the instruction list
+  instead, in the shape the position-based filters already use.
 
 ## Running the checks
 
