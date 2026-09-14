@@ -203,18 +203,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
     @Test
     void diffTaskAnalysesOnlyChangedLines() throws IOException {
         // A real repository, because the diff task resolves a git range rather than a patch.
-        run("git", "init", "--initial-branch=main");
-        run("git", "config", "user.email", "test@example.com");
-        run("git", "config", "user.name", "Test");
-        run("git", "add", ".");
-        run("git", "commit", "-m", "base");
-
-        Files.writeString(projectDir.resolve("src/main/java/demo/Rules.java"),
-                Files.readString(projectDir.resolve("src/main/java/demo/Rules.java"))
-                        .replace("return value * 2;", "return value * 3;"));
-        Files.writeString(projectDir.resolve("src/test/java/demo/RulesTest.java"),
-                Files.readString(projectDir.resolve("src/test/java/demo/RulesTest.java"))
-                        .replace("assertEquals(8,", "assertEquals(12,"));
+        commitEverything();
+        // Left uncommitted, so the default HEAD..-Local- range is what puts it in scope.
+        changeRules();
 
         BuildResult result = runner("mutationTestDiff", "--stacktrace").build();
 
@@ -244,6 +235,115 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
                 "the failure must name the configuration: " + result.getOutput());
         assertTrue(result.getOutput().contains("io.github.huyz0:jzap-cli"),
                 "and the coordinate it could not find: " + result.getOutput());
+    }
+
+    // ------------------------------------------------- the diff range, and where it comes from
+
+    /**
+     * CI can supply the range without editing the build script.
+     *
+     * <p>Non-vacuous by construction: the change under test is committed, so the default range of
+     * {@code HEAD..-Local-} has nothing in it. Only a run that actually reads JZAP_FROM analyses
+     * anything at all here.
+     */
+    @Test
+    void theDiffRangeCanComeFromTheEnvironment() throws IOException {
+        commitEverything();
+        changeRules();
+        run("git", "commit", "-am", "change");
+
+        BuildResult result = runner("mutationTestDiff", "--stacktrace")
+                .withEnvironment(environmentWith("JZAP_FROM", "HEAD~1", "JZAP_TO", "HEAD"))
+                .build();
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":mutationTestDiff").getOutcome());
+        String json = Files.readString(
+                projectDir.resolve("build/reports/jzap-diff/jzap-result.json"));
+        assertTrue(json.contains("doubled"), "the committed change should be in scope:\n" + json);
+        assertFalse(json.contains("\"method\": \"allowed(I)Z\""),
+                "and the untouched method should not be:\n" + json);
+    }
+
+    /** The build script is the explicit statement, so it wins over the ambient one. */
+    @Test
+    void anExplicitRangeInTheBuildScriptBeatsTheEnvironment() throws IOException {
+        Path buildFile = projectDir.resolve("build.gradle");
+        Files.writeString(buildFile, Files.readString(buildFile)
+                .replace("jzap {", "jzap {\n    from = '-Empty-'\n    to = '-Local-'"));
+        commitEverything();
+
+        BuildResult result = runner("mutationTestDiff", "--stacktrace")
+                .withEnvironment(environmentWith("JZAP_FROM", "HEAD", "JZAP_TO", "HEAD"))
+                .build();
+
+        // -Empty- puts everything tracked in scope; the environment's HEAD..HEAD would put
+        // nothing in scope, so the two are told apart by whether anything was analysed.
+        String json = Files.readString(
+                projectDir.resolve("build/reports/jzap-diff/jzap-result.json"));
+        assertTrue(json.contains("doubled"),
+                "the build script's -Empty- should have won:\n" + json);
+        assertEquals(TaskOutcome.SUCCESS, result.task(":mutationTestDiff").getOutcome());
+    }
+
+    /**
+     * The reactor task can be diff-scoped, and is a full run when it is not.
+     *
+     * <p>It previously read neither the extension's range nor the environment, so there was no
+     * way to analyse a multi-module change in one pass -- the case cross-module test selection
+     * exists for.
+     */
+    @Test
+    void theAggregateTaskHonoursARangeAndIsFullWithoutOne() throws IOException {
+        commitEverything();
+        changeRules();
+        run("git", "commit", "-am", "change");
+
+        BuildResult scoped = runner("mutationTestAll", "--stacktrace")
+                .withEnvironment(environmentWith("JZAP_FROM", "HEAD~1", "JZAP_TO", "HEAD"))
+                .build();
+
+        assertEquals(TaskOutcome.SUCCESS, scoped.task(":mutationTestAll").getOutcome());
+        String ranged = Files.readString(
+                projectDir.resolve("build/reports/jzap-all/jzap-result.json"));
+        assertFalse(ranged.contains("\"method\": \"allowed(I)Z\""),
+                "a range was given, so the untouched method is out of scope:\n" + ranged);
+
+        BuildResult full = runner("mutationTestAll", "--rerun-tasks", "--stacktrace").build();
+
+        assertEquals(TaskOutcome.SUCCESS, full.task(":mutationTestAll").getOutcome());
+        String everything = Files.readString(
+                projectDir.resolve("build/reports/jzap-all/jzap-result.json"));
+        assertTrue(everything.contains("\"method\": \"allowed(I)Z\""),
+                "with no range at all it must still analyse every module in full:\n" + everything);
+    }
+
+    /**
+     * TestKit replaces the environment rather than adding to it, so JAVA_HOME and PATH have to be
+     * carried over or the forked build has no JVM to run on.
+     */
+    private static java.util.Map<String, String> environmentWith(String... pairs) {
+        java.util.Map<String, String> environment = new java.util.HashMap<>(System.getenv());
+        for (int i = 0; i < pairs.length; i += 2) {
+            environment.put(pairs[i], pairs[i + 1]);
+        }
+        return environment;
+    }
+
+    private void commitEverything() throws IOException {
+        run("git", "init", "--initial-branch=main");
+        run("git", "config", "user.email", "test@example.com");
+        run("git", "config", "user.name", "Test");
+        run("git", "add", ".");
+        run("git", "commit", "-m", "base");
+    }
+
+    private void changeRules() throws IOException {
+        Files.writeString(projectDir.resolve("src/main/java/demo/Rules.java"),
+                Files.readString(projectDir.resolve("src/main/java/demo/Rules.java"))
+                        .replace("return value * 2;", "return value * 3;"));
+        Files.writeString(projectDir.resolve("src/test/java/demo/RulesTest.java"),
+                Files.readString(projectDir.resolve("src/test/java/demo/RulesTest.java"))
+                        .replace("assertEquals(8,", "assertEquals(12,"));
     }
 
     private void run(String... command) throws IOException {

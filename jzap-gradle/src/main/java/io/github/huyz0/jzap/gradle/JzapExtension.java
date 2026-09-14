@@ -39,10 +39,25 @@ public abstract class JzapExtension {
     /** Reporter ids: console, json, elements, html, annotations. */
     public abstract ListProperty<String> getReporters();
 
-    /** Base git ref for diff scoping. Leaving this unset analyses everything. */
+    /**
+     * Base git ref for diff scoping.
+     *
+     * <p>Honoured by {@code mutationTestDiff}, which falls back to {@code HEAD}, and by
+     * {@code mutationTestAll}, which has no fallback and analyses every module when no range is
+     * given. {@code mutationTest} is a full run by definition and ignores it.
+     *
+     * <p>Setting it here wins over the {@code JZAP_FROM} environment variable, which exists for
+     * CI that knows the base branch and cannot edit the build script.
+     */
     public abstract Property<String> getFrom();
 
-    /** Tip git ref for diff scoping. {@code -Local-} means uncommitted changes. */
+    /**
+     * Tip git ref for diff scoping. {@code -Local-} means uncommitted changes and
+     * {@code -Empty-} the empty tree.
+     *
+     * <p>Same precedence and the same tasks as {@link #getFrom()}; the environment variable is
+     * {@code JZAP_TO}.
+     */
     public abstract Property<String> getTo();
 
     /** {@code line} to mutate only changed lines, {@code class} to widen to changed classes. */

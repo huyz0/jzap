@@ -5,6 +5,8 @@ import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.plugins.ExtraPropertiesExtension;
 import org.gradle.api.plugins.JavaPluginExtension;
+import org.gradle.api.provider.Property;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 
@@ -24,6 +26,17 @@ public class JzapPlugin implements Plugin<Project> {
     public static final String ANALYSE_TASK = "mutationTest";
     public static final String DIFF_TASK = "mutationTestDiff";
     public static final String AGGREGATE_TASK = "mutationTestAll";
+    /**
+     * Environment variables supplying a diff range.
+     *
+     * <p>For CI, which knows the base branch and cannot edit the build script to say so. Every
+     * other option is settable in the {@code jzap} block because it is a property of the project;
+     * the range is a property of the invocation, and is the one thing a pull-request build has to
+     * decide per run.
+     */
+    public static final String FROM_ENV = "JZAP_FROM";
+    public static final String TO_ENV = "JZAP_TO";
+
     private static final String FRAGMENTS_KEY = "jzap.aggregate.fragments";
     private static final String INPUTS_KEY = "jzap.aggregate.inputs";
     private static final String ENGINE_CONFIGURATION = "jzapEngine";
@@ -66,10 +79,11 @@ public class JzapPlugin implements Plugin<Project> {
             task.setGroup("verification");
             task.setDescription("Runs mutation testing over lines changed since the base ref.");
             configure(task, project, extension, engine, main, test);
-            // Defaults chosen for the pull-request case: everything since the merge base of the
-            // main branch, including work that is not committed yet.
-            task.getFrom().convention(extension.getFrom().convention("HEAD"));
-            task.getTo().convention(extension.getTo().convention("-Local-"));
+            // HEAD..-Local- is the developer default: work that is changed but not committed yet.
+            // In CI the interesting range is against the base branch instead, which is what
+            // JZAP_FROM and JZAP_TO supply without an edit to the build script.
+            task.getFrom().convention(diffRef(extension.getFrom(), env(project, FROM_ENV), "HEAD"));
+            task.getTo().convention(diffRef(extension.getTo(), env(project, TO_ENV), "-Local-"));
             task.getReportDir().convention(
                     project.getLayout().getBuildDirectory().dir("reports/jzap-diff"));
         });
@@ -108,6 +122,14 @@ public class JzapPlugin implements Plugin<Project> {
             task.getThreads().set(extension.getThreads());
             task.getReporters().set(extension.getReporters());
             task.getScope().set(extension.getScope());
+            // A range, if one was given. This task read neither the extension's from/to nor the
+            // environment before, so a multi-module change could not be analysed in one pass --
+            // which is the case cross-module test selection exists for, and the reason the
+            // scope granularity set just above had anything to apply to. There is deliberately
+            // no HEAD fallback as there is on the diff task: unset means every module in full,
+            // which is what a task called mutationTestAll has to keep meaning.
+            task.getFrom().convention(extension.getFrom().orElse(env(root, FROM_ENV)));
+            task.getTo().convention(extension.getTo().orElse(env(root, TO_ENV)));
             task.getIncludeClasses().set(extension.getIncludeClasses());
             task.getExcludeClasses().set(extension.getExcludeClasses());
             task.getMutators().set(extension.getMutators());
@@ -161,6 +183,36 @@ public class JzapPlugin implements Plugin<Project> {
             extra.set(INPUTS_KEY, new ArrayList<Object>());
         }
         return (List<Object>) extra.get(INPUTS_KEY);
+    }
+
+    /**
+     * A diff ref: the build script's value first, then the environment, then a default.
+     *
+     * <p>Precedence in that order because the build script is the explicit statement and the
+     * environment is the ambient one. A project that has committed to a range in its own
+     * configuration should not have it changed by whatever is exported into the shell.
+     *
+     * <p>Note what this does not do: it does not call {@code convention()} on the extension's
+     * property. That is how the fallback used to be supplied, and it writes through to the
+     * property every other task shares -- so merely configuring the diff task would have handed
+     * {@code mutationTestAll} a range nobody asked for, silently turning a full reactor run into
+     * a diff against HEAD.
+     */
+    private static Provider<String> diffRef(Property<String> configured,
+                                            Provider<String> environment, String fallback) {
+        return configured.orElse(environment).orElse(fallback);
+    }
+
+    /**
+     * Reads an environment variable as a tracked build input.
+     *
+     * <p>Through Gradle's provider rather than {@code System.getenv}, which the configuration
+     * cache cannot see. An untracked read would let a cached configuration keep serving the
+     * previous run's range, and would leave the task up-to-date across a change of range -- so
+     * a pull-request build would report the verdicts of whatever was analysed last.
+     */
+    private static Provider<String> env(Project project, String name) {
+        return project.getProviders().environmentVariable(name);
     }
 
     private void configure(JzapTask task, Project project, JzapExtension extension,

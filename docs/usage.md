@@ -60,6 +60,12 @@ A library module whose tests live elsewhere reports every mutant as uncovered wh
 its own, and the score then means nothing. `mutationTestAll` emits one model listing every
 module, so a test in one module can kill a mutant in another.
 
+It can be diff-scoped like any other run — see [the range table below](#in-ci) — which is what
+makes it useful on a pull request touching several modules at once. Given no range it analyses
+every module in full.
+
+Maven has no reactor-wide equivalent yet.
+
 ## Maven
 
 ```xml
@@ -239,27 +245,39 @@ engine version and toolchain, and prints why it discarded anything it discarded.
 
 ## In CI
 
-`mutationTestDiff` defaults to `from = HEAD`, `to = -Local-`, which is the right range on a
-developer machine and the wrong one in CI, where the interesting range is against the base branch.
-Nothing in jzap reads an environment variable, so wire the range through a Gradle property:
-
-```groovy
-jzap {
-    from = providers.gradleProperty("jzapFrom").orElse("HEAD")
-    to = "-Local-"
-}
-```
+`mutationTestDiff` defaults to `from = HEAD`, `to = -Local-`: work that is changed but not
+committed yet, which is the right range on a developer machine and the wrong one in CI, where the
+interesting range is against the base branch. `JZAP_FROM` and `JZAP_TO` supply it without an edit
+to the build script:
 
 ```yaml
 - uses: actions/checkout@v5
   with:
     fetch-depth: 0        # a shallow clone has no base ref to diff against
-- run: ./gradlew mutationTestDiff -PjzapFrom=origin/${{ github.base_ref }}
+- run: ./gradlew mutationTestDiff
+  env:
+    JZAP_FROM: origin/${{ github.base_ref }}
+    JZAP_TO: -Local-
 ```
 
 The `fetch-depth: 0` is not optional. `actions/checkout` clones one commit by default, and a
 diff-scoped run against a ref that is not in the repository resolves to nothing in scope — which
 reports a clean run rather than an error.
+
+Both are read as tracked Gradle inputs, so changing the range invalidates the configuration cache
+and re-runs the task rather than leaving it up to date with the previous range's verdicts. A value
+set in the `jzap` block wins over the environment: the build script is the explicit statement, and
+a project that has committed to a range should not have it changed by whatever is exported into
+the shell.
+
+| Task | Range |
+|---|---|
+| `mutationTest` | none — a full run by definition, and it ignores both |
+| `mutationTestDiff` | `jzap` block, else `JZAP_FROM`/`JZAP_TO`, else `HEAD`..`-Local-` |
+| `mutationTestAll` | `jzap` block, else `JZAP_FROM`/`JZAP_TO`, else every module in full |
+
+Maven needs nothing extra: `jzap.from` and `jzap.to` are ordinary parameters, so
+`-Djzap.from=origin/main` or a `${env.JZAP_FROM}` in the POM both work.
 
 Two things matter for a build that will be cached or compared:
 
