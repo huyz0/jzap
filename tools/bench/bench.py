@@ -348,10 +348,16 @@ def main():
                      f"{schemata_execution / 1000:.2f}s, "
                      f"{naive_execution / schemata_execution:.2f}x")
 
-    naive_counts = engines["naive"][1][1]
-    schemata_counts = engines["schemata"][1][1]
-    lines.append(f"  verdicts identical: {dict(sorted(naive_counts.items())) == dict(sorted(schemata_counts.items()))}"
-                 f"  (naive {dict(sorted(naive_counts.items()))})")
+    naive_counts = dict(sorted(engines["naive"][1][1].items()))
+    schemata_counts = dict(sorted(engines["schemata"][1][1].items()))
+    # Not merely printed. A speedup measured against a different set of verdicts is not a
+    # speedup, so disagreement here invalidates every engine figure in this report and the run
+    # fails once the report has been written -- see the exit at the end of main.
+    verdicts_agree = naive_counts == schemata_counts
+    lines.append(f"  verdicts identical: {verdicts_agree}"
+                 f"  (naive {naive_counts})")
+    if not verdicts_agree:
+        lines.append(f"  !! schemata disagrees: {schemata_counts}")
     lines.append("  Schemata compiles every mutant of a class in at once, so selecting one is a")
     lines.append("  field write rather than a class redefinition -- which makes the JVM re-verify")
     lines.append("  the class and discard its compiled code, once per mutant.")
@@ -426,6 +432,17 @@ def main():
     print("\n" + text)
     with open(os.path.join(args.out, "bench-report.txt"), "w", encoding="utf-8") as f:
         f.write(text + "\n")
+
+    if not verdicts_agree:
+        # After the write, so the report is still there to read. Reporting a contradiction and
+        # exiting 0 is how a harness stops being a check: nobody reads a green job's output.
+        print("\nbench: the two engines produced different verdicts, so the engine comparison "
+              "above is measuring different work and cannot be quoted.\n"
+              f"  naive:    {naive_counts}\n"
+              f"  schemata: {schemata_counts}\n"
+              "EngineDifferentialTest is the test that localises this; ./gradlew build runs it.",
+              file=sys.stderr)
+        return 1
     return 0
 
 

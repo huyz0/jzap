@@ -1,0 +1,97 @@
+# Times jzap against PIT on a CI runner.
+#
+# Deliberately not on every push, and deliberately not a gate on any timing.
+#
+# A GitHub runner is a shared virtual machine with noisy neighbours, which is the opposite of the
+# quiet machine docs/parity-and-benchmarks.md requires before a figure is published. Three times
+# in this project a surprising benchmark number has turned out to be contention rather than code,
+# and a timing threshold on hardware like this would fail builds for reasons no change caused.
+#
+# So what is this job for? Three things that do not need a quiet machine:
+#
+#   1. The harness keeps working. bench.py and reduction.py are 600 lines of Python that nothing
+#      else in CI executes, and they drive the CLI through scenarios the test suite does not --
+#      a patch-scoped run, a warm cache, a recompile, PIT itself. They can rot silently.
+#   2. The engine comparison stays honest. bench.py now fails if the schemata engine and the
+#      reference engine produce different verdicts, because a speedup measured against different
+#      work is not a speedup.
+#   3. A ratio on second hardware. Absolute times here are not comparable with the developer
+#      machine's, but jzap and PIT run on the same runner in the same job, so the ratio between
+#      them is a second, independent data point for the one claim that matters.
+name: bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: 'Repetitions per scenario; the report takes the median and shows the range.'
+        required: false
+        default: '3'
+  schedule:
+    # Weekly, so rot in the harness surfaces within a week rather than whenever someone next
+    # thinks to run it by hand.
+    - cron: '0 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    # PIT takes roughly half a minute per repetition and the reference engine a third of that, so
+    # the measurement alone is minutes. The limit is a backstop against a mutant hanging a
+    # scenario, not a target.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Record what the numbers were taken on
+        run: |
+          {
+            echo "runner: $(nproc) cores, $(free -g | awk '/^Mem:/ {print $2}') GB"
+            echo "kernel: $(uname -sr)"
+            echo "java:   $(java -version 2>&1 | head -1)"
+            echo "commit: ${{ github.sha }}"
+          } | tee runner.txt
+
+      # Fails if the two engines disagree on verdicts. Every timing is reported with its range
+      # and is advisory; see the header above.
+      - name: jzap against PIT
+        run: ./gradlew :tools:bench:bench -PbenchRuns=${{ inputs.runs || '3' }} --stacktrace
+
+      # Speed and detection loss together, because a reduction figure without its loss figure is
+      # an advertisement rather than a result.
+      - name: What each reduction technique costs
+        run: ./gradlew :tools:bench:reduction --stacktrace
+
+      - name: Show the reports in the log
+        if: always()
+        run: |
+          cat runner.txt
+          for f in tools/bench/build/bench/bench-report.txt \
+                   tools/bench/build/reduction/reduction-report.txt; do
+            [ -f "$f" ] && { echo; echo "=== $f"; cat "$f"; }
+          done
+
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-reports
+          path: |
+            runner.txt
+            tools/bench/build/bench/bench-report.txt
+            tools/bench/build/reduction/reduction-report.txt
+          retention-days: 90
+          if-no-files-found: warn
