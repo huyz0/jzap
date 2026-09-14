@@ -15,7 +15,7 @@ import java.util.List;
  * @param scope         what to analyse
  * @param cache         incremental cache configuration
  * @param reporters     reporter ids to run
- * @param threads       analysis threads; 0 means one per available processor
+ * @param threads       analysis JVMs; 0 means {@link #DEFAULT_THREADS}
  * @param timeoutFactor multiplier applied to a test's baseline duration before declaring a hang
  * @param timeoutConstMillis constant added to the timeout, to absorb scheduling noise
  * @param maxMutantsPerMinion mutants analysed in one forked JVM before it is recycled, which
@@ -43,6 +43,29 @@ public record ProjectModel(
 
     public static final int CURRENT_SCHEMA_VERSION = 1;
 
+    /**
+     * Analysis JVMs when none is asked for. One, deliberately.
+     *
+     * <p>It used to be {@code availableProcessors()}, and that was measured wrong. On a four-core
+     * CI runner the benchmark fixture took 5.66s at one thread, 6.88s at two and 8.21s at four --
+     * so the default configuration was 31% slower than {@code -t 1} on the commonest machine jzap
+     * runs on, with non-overlapping ranges over three runs. On a twenty-core machine the same
+     * fixture gained 1.14x from two threads. The upside of guessing is therefore about 14% and the
+     * downside about 45%, and jzap cannot tell in advance which it will get: what decides it is
+     * whether the tests are CPU-bound or waiting on something, and nothing here measures that.
+     *
+     * <p>So the default is the one setting that is never worse than asking for it, and a project
+     * that knows its tests are slow or I/O-bound opts in with {@code --threads} or
+     * {@code jzap { threads = N }}. A suite whose tests sleep gains almost linearly; see
+     * fixtures/parallel-java, which exists to exercise that path.
+     *
+     * <p>The wins jzap is actually built on are much larger than the one being given up here --
+     * diff scoping, the schemata engine, the cache and the daemon are each multiples rather than
+     * percentages -- so a default that can silently cost half a run's time to chase 14% is a bad
+     * trade even before the asymmetry.
+     */
+    public static final int DEFAULT_THREADS = 1;
+
     public ProjectModel {
         if (schemaVersion == 0) {
             schemaVersion = CURRENT_SCHEMA_VERSION;
@@ -59,7 +82,7 @@ public record ProjectModel(
         scope = scope == null ? Scope.all() : scope;
         cache = cache == null ? CacheConfig.disabled() : cache;
         reporters = reporters == null || reporters.isEmpty() ? List.of("console", "json") : List.copyOf(reporters);
-        threads = threads <= 0 ? Runtime.getRuntime().availableProcessors() : threads;
+        threads = threads <= 0 ? DEFAULT_THREADS : threads;
         timeoutFactor = timeoutFactor <= 0 ? 1.5 : timeoutFactor;
         timeoutConstMillis = timeoutConstMillis <= 0 ? 4000L : timeoutConstMillis;
         maxMutantsPerMinion = maxMutantsPerMinion <= 0 ? 1000 : maxMutantsPerMinion;

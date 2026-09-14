@@ -76,7 +76,7 @@ final class RunCommand implements Callable<Integer> {
 
     @Option(names = {"-t", "--threads"}, paramLabel = "N",
             description = "Analysis threads. Default: whatever the model asks for, which "
-                    + "defaults to one per available processor.")
+                    + "defaults to 1. Raise it for a slow or I/O-bound suite.")
     Integer threads;
 
     /** Set when this command is already running inside the daemon, to stop it recursing. */
@@ -146,7 +146,10 @@ final class RunCommand implements Callable<Integer> {
             System.out.println(result.reusedFromCache() + " of " + result.mutants().size()
                     + " verdicts reused from the cache at " + cacheDir);
         }
-        if (!reporterIds.equals(List.of("console"))) {
+        // Only when something was actually written. console and agent both print to stdout, so
+        // for those the output is the report, and naming a directory nothing was written to is
+        // both wrong and, for the agent reporter, tokens spent saying so.
+        if (!STDOUT_REPORTERS.containsAll(reporterIds)) {
             System.out.println("Reports written to " + reportDir.toAbsolutePath());
         }
 
@@ -217,6 +220,9 @@ final class RunCommand implements Callable<Integer> {
         }
         return forwarded;
     }
+
+    /** Reporters whose output is stdout itself, so they write no file to point at. */
+    private static final Set<String> STDOUT_REPORTERS = Set.of("console", "agent");
 
     /** Options the daemon must not be given, or must be given differently. */
     private static final Set<String> NOT_FORWARDED = Set.of(

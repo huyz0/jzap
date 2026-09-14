@@ -43,6 +43,7 @@ final class MutantExecutor {
     /** Work that justifies one more worker: about twice what starting one costs. */
     private static final long WORK_PER_WORKER_MILLIS = 2 * JVM_STARTUP_MILLIS;
 
+
     private final ProjectModel model;
     private final AnalysisEngine.Listener listener;
     private final RuntimeJars.Jars jars;
@@ -181,31 +182,55 @@ final class MutantExecutor {
             estimatedMillis += estimatedCostMillis(selections.get(mutant.key()), coverage);
         }
         int requested = Math.max(1, Math.min(model.threads(), classCount));
-        int workers = workerCountFor(requested, estimatedMillis);
+        int cores = Runtime.getRuntime().availableProcessors();
+        int workers = workerCountFor(requested, estimatedMillis, cores);
         if (workers < requested) {
             listener.phase("execution", "using " + workers + " of " + requested
-                    + " requested thread(s): about " + estimatedMillis + "ms of work does not "
-                    + "justify more analysis JVMs, which cost roughly "
-                    + JVM_STARTUP_MILLIS + "ms each to start cold");
+                    + " requested thread(s): " + why(requested, estimatedMillis, cores, workers));
         }
         return workers;
     }
 
     /**
-     * The worker count this much work justifies, capped at what was asked for.
+     * The worker count this job justifies, capped at what was asked for.
      *
-     * <p>One extra worker per {@code WORK_PER_WORKER_MILLIS} of estimated work, which is roughly
-     * twice what starting one costs. Separated from the estimating so the rule itself can be
-     * checked at scales no fixture reaches: the sample fixture is a few tens of milliseconds of
-     * work, so it never justifies a second worker, and a test that asked for eight threads there
-     * would be asserting on a single-threaded run.
+     * <p>Three bounds, and the smallest wins. Each exists because a worker that is not justified
+     * makes the run slower rather than merely failing to help:
+     *
+     * <ul>
+     *   <li><b>Work.</b> One extra worker per {@code WORK_PER_WORKER_MILLIS} of estimated work,
+     *       roughly twice what starting one costs.
+     *   <li><b>Cores.</b> One fewer than the machine has. Every worker is a JVM running a real
+     *       test suite, so workers beyond the available cores do not run concurrently -- they
+     *       timeslice, and each has still paid a cold start. One core is left for this JVM, which
+     *       is dispatching to all of them, and for whatever else the machine is doing; in CI that
+     *       is at least a build tool's daemon.
+     * </ul>
+     *
+     * <p>The cores bound is why this signature changed. The rule modelled only the work, so
+     * {@code -t 32} on a four-core machine started thirty-two JVMs to timeslice four cores.
+     *
+     * <p>What the cores bound does <em>not</em> do is decide how many workers are worth having
+     * when there are cores to spare, and no rule here can. On a four-core runner the bench
+     * fixture measured 0.82x at two workers and 0.69x at four against a single thread; the
+     * parallel fixture, whose tests sleep, gains from every worker it can get. The two are
+     * indistinguishable from durations alone -- both come to roughly 800-1100 ms of estimated
+     * work per worker -- because what separates them is whether the tests are CPU-bound or
+     * waiting, which nothing here measures. That is why the default thread count is now one:
+     * see {@code ProjectModel}.
+     *
+     * <p>Separated from the estimating so the rule itself can be checked at scales no fixture
+     * reaches: the sample fixture is a few tens of milliseconds of work, so it never justifies a
+     * second worker, and a test that asked for eight threads there would be asserting on a
+     * single-threaded run.
      *
      * @param requested       threads asked for, already capped at the number of classes -- work is
      *                        partitioned by class, so a worker with no class to take is a JVM
      *                        started for nothing
      * @param estimatedMillis what the covered mutants are expected to cost in total
+     * @param cores           processors available to this JVM
      */
-    static int workerCountFor(int requested, long estimatedMillis) {
+    static int workerCountFor(int requested, long estimatedMillis, int cores) {
         if (requested <= 1) {
             return 1;
         }
@@ -213,8 +238,22 @@ final class MutantExecutor {
         // division is not a real workload, but it is reachable from a hand-edited or corrupted
         // cache, and the cast used to wrap negative -- which newFixedThreadPool rejects outright
         // rather than falling back to something sensible.
-        long justified = Math.max(1, estimatedMillis / WORK_PER_WORKER_MILLIS);
-        return (int) Math.min(requested, justified);
+        long byWork = Math.max(1, estimatedMillis / WORK_PER_WORKER_MILLIS);
+        long byCores = Math.max(1, cores - 1L);
+        return (int) Math.min(requested, Math.min(byWork, byCores));
+    }
+
+    /** Which bound actually applied, because "using 1 of 4" on its own invites a bug report. */
+    private static String why(int requested, long estimatedMillis, int cores, int workers) {
+        if (workers >= requested) {
+            return "no bound applied";
+        }
+        if (Math.max(1, cores - 1L) == workers) {
+            return cores + " core(s) available, and every worker is a JVM running your tests, so "
+                    + "more of them timeslice rather than run concurrently";
+        }
+        return "about " + estimatedMillis + "ms of work does not justify more analysis JVMs, "
+                + "which cost roughly " + JVM_STARTUP_MILLIS + "ms each to start cold";
     }
 
     /** What one mutant costs: its first test, since early exit means that usually decides it. */

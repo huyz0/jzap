@@ -23,8 +23,8 @@ plugins {
 }
 
 jzap {
-    threads = 4
     threshold = 80
+    threads = 4                  // optional; the default is 1, raise it for a slow suite
     cacheDir = layout.buildDirectory.dir("jzap-cache")   // optional, off by default
 }
 ```
@@ -107,6 +107,29 @@ mutant the JVM refuses to load (`NON_VIABLE`) or one whose analysis breaks (`RUN
 counted and reported but left out of both percentages, since the tests were never given the
 chance to detect it; a `RUN_ERROR` exits `3` rather than scoring the rest and passing quietly.
 
+## With a coding agent
+
+```bash
+npx skills add huyz0/jzap      # teaches an agent to run jzap and act on the findings
+```
+
+Then ask it to check whether a change is actually tested. The skill covers scoping to the diff,
+reading the findings, and what assertion each kind of survivor is missing —
+[skills/jzap/](skills/jzap/) is one short file, worth reading before installing.
+
+For agent-shaped output from any invocation, `-r agent` prints the survivors and uncovered
+mutants and nothing else: on the benchmark fixture 16 KB against the JSON report's 509 KB, about
+4,000 tokens instead of 130,000.
+
+```
+jzap: 2 survived, 3 uncovered of 12 mutants (score 58.3%, strength 77.8%)
+
+survived:
+sample/Discount.java
+  10 CONDITIONALS_BOUNDARY changed conditional boundary: <= became <
+  17 TRUE_RETURNS replaced boolean return with true
+```
+
 ## How it fits together
 
 The engine knows nothing about Gradle, Maven, or git. A build tool computes a **project
@@ -121,7 +144,7 @@ jzap-agent    the Java agent            (dependency-free: shares a JVM with your
 jzap-wire     the controller protocol   (dependency-free, same reason)
 jzap-minion   the forked JVM that runs your tests
 jzap-git      git ranges and unified diffs, resolved to line ranges
-jzap-report   console, JSON, mutation-testing-elements, HTML, PR annotations
+jzap-report   console, JSON, mutation-testing-elements, HTML, PR annotations, agent
 jzap-cli      the command line
 jzap-gradle   the Gradle adapter: source sets and toolchains in, project model out
 jzap-maven    the Maven adapter, built by Maven because plugin descriptors are

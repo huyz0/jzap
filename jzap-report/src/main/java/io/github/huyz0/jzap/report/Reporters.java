@@ -17,6 +17,7 @@ public final class Reporters {
         registry.put("elements", ElementsJsonReporter::new);
         registry.put("html", HtmlReporter::new);
         registry.put("annotations", AnnotationsJsonReporter::new);
+        registry.put("agent", () -> new AgentReporter(console));
     }
 
     public Reporter byId(String id) {

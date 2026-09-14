@@ -274,6 +274,92 @@ class ReportEdgeCasesTest {
         assertTrue(json.contains("\"detectedMutants\": 1"), json);
     }
 
+    // -------------------------------------------------------- the agent reporter
+
+    private static String agent(AnalysisResult result, Path dir) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        new Reporters(new PrintStream(out, true, StandardCharsets.UTF_8))
+                .byId("agent").write(result, ReportContext.of(dir, List.of()));
+        return out.toString(StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void theAgentReportCarriesTheFindingsAndNotTheKilledMutants(@TempDir Path dir) {
+        String text = agent(resultOf(List.of(
+                mutant(1, MutantStatus.KILLED),
+                mutant(2, MutantStatus.SURVIVED),
+                mutant(3, MutantStatus.NO_COVERAGE)), List.of()), dir);
+
+        assertTrue(text.startsWith("jzap: 1 survived, 1 uncovered of 3 mutants"),
+                "the headline has to survive a truncated read: " + text);
+        assertTrue(text.contains("ex/Calc.java"), text);
+        assertTrue(text.contains("  2 MATH"), "line, mutator, description: " + text);
+        assertFalse(text.contains("KILLED"),
+                "a killed mutant is the good outcome and there is nothing to do about it: " + text);
+        assertTrue(text.indexOf("survived:") < text.indexOf("uncovered:"),
+                "survivors are the actionable half and must come first: " + text);
+    }
+
+    @Test
+    void theAgentReportIsOneLineWhenThereIsNothingToDo(@TempDir Path dir) {
+        String text = agent(resultOf(List.of(mutant(1, MutantStatus.KILLED)), List.of()), dir);
+
+        assertEquals(1, text.strip().lines().count(),
+                "nothing actionable should cost one line, not a heading with nothing under it: "
+                        + text);
+    }
+
+    /**
+     * A red baseline is the one thing that must not be abbreviated away.
+     *
+     * <p>Every verdict is suspect while a test already fails, so an agent that acts on the
+     * findings without seeing this does the wrong work confidently.
+     */
+    @Test
+    void theAgentReportLeadsWithARedBaseline(@TempDir Path dir) {
+        String text = agent(resultOf(List.of(mutant(2, MutantStatus.SURVIVED)),
+                List.of("ex.CalcTest#broken")), dir);
+
+        assertTrue(text.contains("baseline-failures: 1"), text);
+        assertTrue(text.contains("ex.CalcTest#broken"), text);
+        assertTrue(text.indexOf("baseline-failures") < text.indexOf("survived:"),
+                "it has to be read before the findings are acted on: " + text);
+    }
+
+    @Test
+    void theAgentReportNamesMutantsOutsideTheScore(@TempDir Path dir) {
+        String text = agent(resultOf(List.of(
+                mutant(1, MutantStatus.KILLED),
+                mutant(2, MutantStatus.RUN_ERROR)), List.of()), dir);
+
+        assertTrue(text.contains("1 not scored"),
+                "a score over very little must not look like a score over everything: " + text);
+    }
+
+    /**
+     * The reason this reporter exists, asserted rather than claimed.
+     *
+     * <p>The ratio grows with the proportion of killed mutants, so a healthy suite -- the case
+     * an agent meets most often -- saves the most.
+     */
+    @Test
+    void theAgentReportIsSubstantiallySmallerThanTheJsonOne(@TempDir Path dir) throws Exception {
+        List<Mutant> many = new java.util.ArrayList<>();
+        for (int line = 1; line <= 100; line++) {
+            many.add(mutant(line, line % 10 == 0 ? MutantStatus.SURVIVED : MutantStatus.KILLED));
+        }
+        AnalysisResult result = resultOf(many, List.of());
+
+        String agentReport = agent(result, dir);
+        new NativeJsonReporter().write(result, ReportContext.of(dir, List.of()));
+        String json = Files.readString(dir.resolve(NativeJsonReporter.FILE_NAME),
+                StandardCharsets.UTF_8);
+
+        assertTrue(agentReport.length() * 10 < json.length(),
+                "expected an order of magnitude, got " + agentReport.length() + " vs "
+                        + json.length() + " characters");
+    }
+
     private static long count(String text, String needle) {
         return text.split(needle, -1).length - 1L;
     }

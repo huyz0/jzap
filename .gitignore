@@ -5,3 +5,7 @@ build/
 *.iml
 .kotlin/
 target/
+
+# Python bytecode from the bench and parity harnesses.
+__pycache__/
+*.pyc

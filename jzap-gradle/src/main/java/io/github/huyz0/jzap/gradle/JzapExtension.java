@@ -33,7 +33,13 @@ public abstract class JzapExtension {
      */
     public abstract ConfigurableFileCollection getEngineClasspath();
 
-    /** Analysis threads. Defaults to one per available processor. */
+    /**
+     * Analysis JVMs. Defaults to one.
+     *
+     * <p>Raise it when the test suite is slow or spends its time waiting, where an extra analysis
+     * JVM gains almost linearly. On a suite of fast CPU-bound tests it can cost more than it
+     * saves, which is why the default does not guess; see {@code ProjectModel.DEFAULT_THREADS}.
+     */
     public abstract Property<Integer> getThreads();
 
     /** Reporter ids: console, json, elements, html, annotations. */

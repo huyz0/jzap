@@ -91,6 +91,8 @@ about it. Where a document says PIT does something, there is a probe or a baseli
 
 - [Getting started](usage.md) — install, run, scope to a diff, read the report, wire up CI
 - [Mutators and filters](mutators.md) — what gets changed, and what deliberately does not
+- **Coding agents** — `npx skills add huyz0/jzap` installs a skill that teaches an agent to run
+  jzap and act on what it finds; `-r agent` is the reporter shaped for reading as command output
 - [Troubleshooting](troubleshooting.md) — the failures people actually hit, and what each means
 - [Compatibility](compatibility.md) — what jzap has been run against, rather than what it might
   work with

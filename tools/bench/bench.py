@@ -98,6 +98,27 @@ def pick_mutant_bearing_line(jzap, model):
     return {"path": path, "line": line, "count": count}
 
 
+def describe_machine():
+    """Cores, memory and platform, for the caveat block.
+
+    Enough to tell a four-core CI runner from a twenty-core workstation, which is the distinction
+    that decides whether the thread-scaling curve in this report means anything for the reader.
+    Degrades to what it can determine rather than failing a benchmark over a missing file.
+    """
+    cores = os.cpu_count() or "unknown"
+    memory = "unknown memory"
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    memory = f"{int(line.split()[1]) / 1024 / 1024:.0f} GB"
+                    break
+    except OSError:
+        pass
+    ci = " (CI runner)" if os.environ.get("CI") else ""
+    return f"{cores} cores, {memory}, {sys.platform}{ci}"
+
+
 def report(name, times):
     median = statistics.median(times)
     return f"{name:<34} {median:7.2f}s   (range {min(times):.2f}-{max(times):.2f}s, n={len(times)})"
@@ -414,8 +435,14 @@ def main():
     lines.append(f"  jzap diff: {diff_summary[0]:4d} mutants  {dict(sorted(diff_summary[1].items()))}")
     lines.append("")
     lines.append("Caveats, stated because a timing without them is not usable:")
-    lines.append("  - Run on a developer machine, not an isolated bench host. Treat the ratio as")
-    lines.append("    indicative and the absolute numbers as machine-specific.")
+    # Recorded rather than asserted. This line used to read "run on a developer machine"
+    # unconditionally, which became false the first time the harness ran in CI -- and a caveat
+    # that states the wrong machine is worse than none, because it is believed.
+    lines.append(f"  - Machine: {describe_machine()}.")
+    lines.append("    Neither this nor any machine here is an isolated bench host. Treat the")
+    lines.append("    ratio as indicative and the absolute numbers as machine-specific; jzap and")
+    lines.append("    PIT ran in the same process tree on the same host, so the ratio is the")
+    lines.append("    part that carries across.")
     lines.append("  - S1, S3, S5 and S6 use jzap's defaults: the schemata engine, one thread,")
     lines.append("    and no cache except where the scenario says otherwise. S1a compares the")
     lines.append("    engines directly.")

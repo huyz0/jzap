@@ -43,7 +43,9 @@ class ModelIoTest {
         assertEquals("line", m.scope().granularity());
         assertEquals(List.of("console", "json"), m.reporters());
         assertEquals(1000, m.maxMutantsPerMinion());
-        assertTrue(m.threads() >= 1);
+        assertEquals(1, m.threads(),
+                "the default is one analysis JVM, not one per core: guessing measured 31% slower "
+                + "than a single thread on a four-core CI runner");
     }
 
     @Test

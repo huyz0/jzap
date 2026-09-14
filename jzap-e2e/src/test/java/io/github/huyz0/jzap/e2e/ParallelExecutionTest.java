@@ -29,9 +29,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h2>What this fixture can and cannot show</h2>
  *
- * The engine caps workers at what the work justifies, because starting an analysis JVM costs
- * about a quarter of a second and starts it cold. This fixture is a few tens of milliseconds of
- * work, so asking for eight threads here yields one worker -- which means these tests prove that
+ * The engine trims a thread request to what the work justifies and to the cores available,
+ * because starting an analysis JVM costs about a quarter of a second and starts it cold. This
+ * fixture is a few tens of milliseconds of work, so asking for eight threads here yields one
+ * worker -- which means these tests prove that
  * the request is honoured without changing the answer, not that eight JVMs produce the same
  * answer as one. {@code workersActuallyUsed} asserts that plainly rather than leaving the
  * distinction to be rediscovered.

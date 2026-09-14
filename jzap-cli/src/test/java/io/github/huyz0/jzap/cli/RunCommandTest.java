@@ -78,6 +78,43 @@ class RunCommandTest {
                 "console output is the report; pointing at a directory would be noise");
     }
 
+    /**
+     * The agent reporter's output is stdout, so there is no directory to point at.
+     *
+     * <p>Worth a test of its own rather than folding it in with console: the whole point of that
+     * reporter is that every line it prints is one an agent pays to read, and a line naming a
+     * directory nothing was written to is both wrong and wasted.
+     */
+    @Test
+    void theAgentReporterPrintsFindingsAndNoReportDirectory(@TempDir Path dir) {
+        Path model = new CliFixture().writeModel(dir);
+
+        Invocation result = run("run", "-m", model.toString(),
+                "-o", dir.resolve("reports").toString(), "-r", "agent", "-q");
+
+        assertEquals(RunCommand.EXIT_OK, result.exitCode(), result.all());
+        assertTrue(result.out().startsWith("jzap: "),
+                "the headline comes first: " + result.out());
+        assertFalse(result.out().contains("Reports written to"),
+                "nothing was written to a directory: " + result.out());
+        assertFalse(Files.exists(dir.resolve("reports")),
+                "and the directory should not even be created");
+    }
+
+    /** Paired with one that does write a file, the announcement comes back. */
+    @Test
+    void aFileWritingReporterAlongsideTheAgentOneStillAnnouncesWhereItWent(@TempDir Path dir) {
+        Path model = new CliFixture().writeModel(dir);
+        Path reports = dir.resolve("reports");
+
+        Invocation result = run("run", "-m", model.toString(),
+                "-o", reports.toString(), "-r", "agent,json", "-q");
+
+        assertEquals(RunCommand.EXIT_OK, result.exitCode(), result.all());
+        assertTrue(result.out().contains("Reports written to"), result.out());
+        assertTrue(Files.isRegularFile(reports.resolve("jzap-result.json")));
+    }
+
     // ------------------------------------------------------------ exit codes
 
     @Test

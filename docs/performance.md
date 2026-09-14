@@ -102,6 +102,37 @@ What it added up to, same fixture and one thread:
 [Profiling notes](profiling.md) has the full account, including — at greater length — the leads
 that measurement **closed**. That half is the more useful one.
 
+## A second machine, from CI
+
+The same harness runs on a GitHub Actions runner — `./gradlew :tools:bench:bench` in
+`.github/workflows/bench.yml`, weekly and on demand. Absolute times there are not comparable with
+the numbers above and are not meant to be; both tools run in the same job on the same host, so the
+**ratio** is what carries across.
+
+Measured on a 4-core, 15 GB Azure runner, Temurin 17.0.20.1, median of 3:
+
+| Scenario | CI runner (4 cores) | Developer machine (20 cores) |
+|---|---|---|
+| jzap, full run, one thread | 5.54s | 2.91s |
+| PIT, full run, one thread | 47.23s | 28.09s |
+| **ratio** | **8.52x** | **9.64x** |
+| Schemata against the reference engine | 3.42x | 6.41x |
+| Diff run, one changed line | 2.42s (2.3x its own full run) | 1.44s (2.0x) |
+| Re-run, cache warm | 0.81s (14.7% of a full run) | 0.42s (14.3%) |
+
+Two things are worth more than the timings.
+
+**The verdicts are byte-identical across machines**: 835 killed, 125 survived, 120 uncovered on
+both, and the same 1080-against-1040 mutant counts against PIT. Determinism is a hard requirement
+here, because Gradle's build cache will lie if a result depends on the machine. This is the first
+evidence for it from hardware nobody developed on.
+
+**The engine ratio halves on four cores** — 3.42x rather than 6.41x, and 4.61x rather than 10.37x
+on the execution phase alone. Schemata's saving is JVM work that the reference engine spends on
+re-verifying and re-JITing a class per mutant, so it scales with how much CPU there is to save it
+on. The 6.41x figure is a 20-core figure, and quoting it alone would overstate what a CI runner
+sees.
+
 ## Thread scaling
 
 | Threads | Time | vs 1 thread |
@@ -119,6 +150,44 @@ Scaling was **negative** at twenty threads until the worker count was capped by 
 4.06s before the cap, 2.55s after. Once a mutant costs 1.5 ms and a JVM start costs 250 ms, more
 workers is simply worse. The general shape of both this and the profiling findings is the same:
 **once fixed costs dominate, dividing the variable part barely helps.**
+
+### On four cores it is still negative
+
+The CI run measured the same curve on a 4-core runner and it goes the other way:
+
+| Threads | CI runner (4 cores) | vs 1 thread |
+|---|---|---|
+| 1 | 5.66s | 1.00x |
+| 2 | 6.88s | **0.82x** |
+| 4 | 8.21s | **0.69x** |
+
+Fastest at one thread, and the ranges do not overlap (5.52–5.94s against 7.99–8.43s, n=3), so this
+is not noise.
+
+### What that changed
+
+**jzap now defaults to one analysis JVM.** It used to default to `availableProcessors()`, so on
+this runner the out-of-the-box configuration was the 8.21s column — **31% slower than `-t 1`** on
+the same host in the same job.
+
+The arithmetic is asymmetric and jzap cannot predict which side it lands on. Two threads gained
+1.14x on twenty cores and lost 18% on four; four threads lost 31%. So the upside of guessing is
+about 14% and the downside about 45%. What decides it is whether the tests are CPU-bound or
+waiting on something, and nothing in jzap measures that — `fixtures/parallel-java`, whose tests
+sleep, gains from every worker it can get, while the bench fixture's 2 ms CPU-bound tests lose.
+Both come to roughly 800–1100 ms of estimated work per worker, so no threshold can separate them.
+
+A default that can silently cost half a run's time to chase 14% is a bad trade, especially when
+the wins jzap is actually built on — diff scoping, the schemata engine, the cache, the daemon —
+are multiples rather than percentages. **Raise it yourself when your suite is slow or I/O-bound**,
+with `--threads N` or `jzap { threads = N }`; that is the case where an extra JVM gains almost
+linearly.
+
+The worker cap also now trims a request to the cores available, one less than the machine has.
+It previously modelled only the work, so `--threads 32` on a four-core machine started
+thirty-two JVMs to timeslice four cores. That bound is a physical limit rather than a heuristic:
+every worker is a JVM running a real test suite, so workers past the core count do not run
+concurrently, they timeslice, and each has still paid a cold start.
 
 ## Caching
 
@@ -190,7 +259,14 @@ to be repeated rather than cited.
 ./gradlew :tools:bench:bench      # the scenario table above
 ./gradlew :tools:bench:reduction  # speed and detection loss together
 ./gradlew :tools:parity:parity    # verdict agreement against PIT
+gh workflow run bench.yml         # the same harness on a CI runner
 ```
+
+Every report states the machine it was taken on — cores, memory, platform — because a table of
+timings with no statement of what produced them is the thing this page exists to avoid. The
+benchmark fails if the schemata engine and the reference engine disagree on verdicts: a speedup
+measured against different work is not a speedup, and a harness that reports that contradiction
+and exits 0 has stopped being a check.
 
 Then read the `timings` object in `jzap-result.json`, which carries the execution-phase breakdown.
 It is part of the report rather than a debug flag precisely so that the next person choosing an

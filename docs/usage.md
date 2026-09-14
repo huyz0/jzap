@@ -19,8 +19,8 @@ plugins {
 }
 
 jzap {
-    threads = 4
     threshold = 80
+    threads = 4                  // optional; the default is 1, raise it for a slow suite
     cacheDir = layout.buildDirectory.dir("jzap-cache")   // optional, off by default
 }
 ```
@@ -139,7 +139,7 @@ jzap daemon        -m model.json --stop   # stop it
 | `-m`, `--project-model FILE` | The project model. Required. |
 | `-o`, `--report-dir DIR` | Where reports go. Default `build/reports/jzap`. |
 | `-r`, `--reporters ID,...` | Which reporters to run. Default: whatever the model asks for. |
-| `-t`, `--threads N` | Analysis threads. Default: from the model. |
+| `-t`, `--threads N` | Analysis JVMs. Default 1; raise it for a slow or I/O-bound suite. |
 | `--from REF` / `--to REF` | Scope to a git range. `-Local-` means the working tree, `-Empty-` the empty tree. |
 | `--patch FILE` | Scope to a unified diff, with no repository present. |
 | `--scope line\|class` | Diff granularity. Line by default. |
@@ -188,9 +188,41 @@ Five reporters, selectable with `-r`:
 | `elements` | `mutation-test-elements.json` — the mutation-testing-elements schema, for Stryker's viewer and the dashboards built on it |
 | `html` | A self-contained page. No scripts, no external fetches |
 | `annotations` | One pull-request comment per survivor |
+| `agent` | The findings only, to stdout, one per line. For a coding agent reading command output |
 
 `elements` exists so an existing team can point their current dashboard at jzap without writing
 anything.
+
+### For a coding agent
+
+`-r agent` prints the survivors and uncovered mutants and nothing else — no killed mutants, no
+source snippets, no timings, headline first so a truncated read still gets it:
+
+```
+jzap: 2 survived, 3 uncovered of 12 mutants (score 58.3%, strength 77.8%)
+
+survived:
+sample/Discount.java
+  10 CONDITIONALS_BOUNDARY changed conditional boundary: <= became <
+  17 TRUE_RETURNS replaced boolean return with true
+```
+
+On the 1080-mutant benchmark fixture that is 16 KB against the JSON report's 509 KB — roughly
+4,000 tokens instead of 130,000, for the same findings. Like `console` it writes no file, so a run
+with only these reporters does not announce a report directory.
+
+### The agent skill
+
+The repository publishes an agent skill that teaches a coding agent the above — when to run jzap,
+how to read the findings, and what to change for each kind of survivor:
+
+```bash
+npx skills add huyz0/jzap
+```
+
+It installs for whichever agents are configured; `-a claude-code -a cursor` picks them
+explicitly. The source is one file, [`skills/jzap/SKILL.md`](https://github.com/huyz0/jzap/blob/main/skills/jzap/SKILL.md),
+short enough to read before installing.
 
 ### Verdicts
 
@@ -238,6 +270,12 @@ jzap run -m model.json --cache-dir .jzap/cache           # reuse verdicts; 0.42s
 jzap run -m model.json --daemon                          # skip jzap's own JVM startup; 0.17s
 jzap run -m model.json --from origin/main --to -Local-   # analyse the branch, not the repository
 ```
+
+`--threads` is the one of those four that can make a run *slower*, which is why it defaults to 1.
+An extra analysis JVM gains almost linearly on a suite that spends its time waiting, and loses to
+contention and cold starts on fast CPU-bound tests — measured at 1.14x on twenty cores and 0.69x
+on four for the same fixture. Raise it and compare; do not assume. Every other option here only
+removes work.
 
 The cache is opt-in rather than on by default: a cache whose whole question is whether reuse is
 sound should not start reusing without being asked. It is keyed on bytecode, mutators, filters,

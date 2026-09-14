@@ -205,10 +205,28 @@ protocol round trips where one would do. The same document records what profilin
 including parallelising the coverage phase, whose ceiling measured under 7% of a run and which would
 change what the baseline test run means.
 
-Thread scaling is now flat-positive — 1.00x, 1.14x, 1.11x, 1.14x at 1, 2, 4 and 20 threads. It was
-*negative* at twenty until the worker count was capped by estimated work: once a mutant costs 1.5ms
-and a JVM start costs 250ms, more workers is worse. The remaining scaling is modest because the run
-is now 2.9s, of which 0.8s is a serial coverage phase.
+Thread scaling is flat-positive *on this machine* — 1.00x, 1.14x, 1.11x, 1.14x at 1, 2, 4 and 20
+threads. It was *negative* at twenty until the worker count was capped by estimated work: once a
+mutant costs 1.5ms and a JVM start costs 250ms, more workers is worse. The remaining scaling is
+modest because the run is now 2.9s, of which 0.8s is a serial coverage phase.
+
+On four cores it is negative: the CI benchmark measures 1.00x, 0.82x, 0.69x at 1, 2 and 4 threads,
+fastest at one. jzap used to default to one analysis JVM per processor, which made that 0.69x
+column its out-of-the-box behaviour on a standard CI runner.
+
+**The default is now one analysis JVM.** The upside of guessing measured about 14% and the downside
+about 45%, and what decides which you get is whether the tests are CPU-bound or waiting -- which
+nothing here measures. Raise it with `--threads` for a slow or I/O-bound suite, where an extra JVM
+gains almost linearly. The worker cap additionally trims any request to one less than the core
+count, which it never did before: `--threads 32` on four cores used to start thirty-two JVMs.
+See [performance.md](performance.md).
+
+**Also measured in CI.** `.github/workflows/bench.yml` runs the same harness weekly on a GitHub
+runner. The absolute times are not comparable with the table above and are not meant to be; what
+it establishes is that the verdicts are identical on hardware nobody developed on -- 835 killed,
+125 survived, 120 uncovered on both -- that the jzap-to-PIT ratio holds at 8.52x on four cores,
+and that the schemata engine's advantage halves there, since what it saves is JVM work and there
+is less CPU to save it on.
 
 **Run these on a quiet machine.** An earlier run taken while a build was running alongside it
 reported reduction techniques at 0.98x and 0.72x — numbers that invited a conclusion about
@@ -276,6 +294,13 @@ Two milestones were closed by measurement rather than by code, and the numbers a
 
 ## Known limitations of what does exist
 
+- **Whether more analysis JVMs will help cannot be predicted.** The default is one, because
+  guessing measured 14% upside and 45% downside. What decides it is whether the tests are
+  CPU-bound or waiting, and jzap measures neither: a suite that sleeps gains almost linearly from
+  every worker, while fast CPU-bound tests lose to contention and cold starts, and the two look
+  identical in the duration data the scheduler has. Raising `threads` is therefore a measurement
+  the user has to make on their own suite. Sampling CPU utilisation during the coverage phase
+  would let jzap decide this itself and is not built.
 - **Line-granularity coverage** selects more tests than necessary. Block granularity with
   exception-correct attribution is not built; the section above has the measurement that
   decided against it for now.
