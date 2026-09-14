@@ -99,6 +99,7 @@ nav:
       - "ADR 0001: Java, not Rust": adr/0001-implementation-language.md
   - Project:
       - Status: status.md
+      - Releasing: releasing.md
       - Coverage: coverage.md
       - Delivery plan: delivery-plan.md
 

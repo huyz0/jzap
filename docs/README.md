@@ -119,6 +119,7 @@ about it. Where a document says PIT does something, there is a probe or a baseli
 
 - [Status](status.md) — what works today, what is measured, what is not built
 - [Coverage](coverage.md) — what the coverage figure measures and what it cannot
+- [Releasing](releasing.md) — what a release publishes where, and the accounts and keys it needs
 - [Delivery plan](delivery-plan.md) — the phased plan, each stage with a binary definition of
   done and kill criteria
 

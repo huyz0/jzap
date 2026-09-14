@@ -109,16 +109,23 @@ The same harness runs on a GitHub Actions runner — `./gradlew :tools:bench:ben
 the numbers above and are not meant to be; both tools run in the same job on the same host, so the
 **ratio** is what carries across.
 
-Measured on a 4-core, 15 GB Azure runner, Temurin 17.0.20.1, median of 3:
+Measured on a 4-core, 16 GB Azure runner, Temurin 17.0.20.1, median of 3, over two runs:
 
 | Scenario | CI runner (4 cores) | Developer machine (20 cores) |
 |---|---|---|
-| jzap, full run, one thread | 5.54s | 2.91s |
-| PIT, full run, one thread | 47.23s | 28.09s |
-| **ratio** | **8.52x** | **9.64x** |
+| jzap, full run, one thread | 5.51s, 5.54s | 2.91s |
+| PIT, full run, one thread | 43.70s, 47.23s | 28.09s |
+| **ratio** | **7.9x–8.5x** | **9.64x** |
 | Schemata against the reference engine | 3.42x | 6.41x |
 | Diff run, one changed line | 2.42s (2.3x its own full run) | 1.44s (2.0x) |
 | Re-run, cache warm | 0.81s (14.7% of a full run) | 0.42s (14.3%) |
+
+Two runs rather than one, and the ratio given as a range, because the second disagreed with the
+first: jzap came out at 5.51s against 5.54s — inside its own run-to-run range — while PIT moved
+from 47.23s to 43.70s. Nothing changed about either tool between them. **A single CI figure is not
+a measurement**, which is the same caveat this page opens with, now demonstrated rather than
+asserted. The runner is shared hardware; what survives the noise is the order of magnitude and the
+fact that jzap and PIT met it on the same host in the same job.
 
 Two things are worth more than the timings.
 
@@ -153,16 +160,22 @@ workers is simply worse. The general shape of both this and the profiling findin
 
 ### On four cores it is still negative
 
-The CI run measured the same curve on a 4-core runner and it goes the other way:
+The CI run measured the same curve on a 4-core runner and it goes the other way. Both columns are
+from the same runner, before and after the cores bound landed:
 
-| Threads | CI runner (4 cores) | vs 1 thread |
-|---|---|---|
-| 1 | 5.66s | 1.00x |
-| 2 | 6.88s | **0.82x** |
-| 4 | 8.21s | **0.69x** |
+| Threads | Before the fix | After | vs 1 thread |
+|---|---|---|---|
+| 1 | 5.66s | 5.26s | 1.00x |
+| 2 | 6.88s | 6.38s | **0.82x** |
+| 4 | 8.21s | 7.20s | **0.73x** (was 0.69x) |
 
-Fastest at one thread, and the ranges do not overlap (5.52–5.94s against 7.99–8.43s, n=3), so this
-is not noise.
+Fastest at one thread in both, and the ranges do not overlap (5.17–5.59s against 6.93–7.45s,
+n=3), so this is not noise.
+
+The cores bound is what moved the four-thread column: `--threads 4` on four cores now runs three
+workers rather than four, which recovered about 12%. It does not make four threads a good idea
+here, and nothing could — what it removes is the part of the loss that was JVMs contending for
+cores that do not exist. The rest is the workload, which is the next section.
 
 ### What that changed
 

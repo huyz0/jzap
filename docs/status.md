@@ -224,9 +224,11 @@ See [performance.md](performance.md).
 **Also measured in CI.** `.github/workflows/bench.yml` runs the same harness weekly on a GitHub
 runner. The absolute times are not comparable with the table above and are not meant to be; what
 it establishes is that the verdicts are identical on hardware nobody developed on -- 835 killed,
-125 survived, 120 uncovered on both -- that the jzap-to-PIT ratio holds at 8.52x on four cores,
+125 survived, 120 uncovered on both -- that the jzap-to-PIT ratio holds at 7.9x-8.5x on four cores,
 and that the schemata engine's advantage halves there, since what it saves is JVM work and there
-is less CPU to save it on.
+is less CPU to save it on. The ratio is a range because two runs of the same commit disagreed on
+PIT's time by 8% and on jzap's by under 1%: a single figure from a shared runner is not a
+measurement.
 
 **Run these on a quiet machine.** An earlier run taken while a build was running alongside it
 reported reduction techniques at 0.98x and 0.72x — numbers that invited a conclusion about
@@ -265,7 +267,7 @@ publishing artefacts or without projects other than these fixtures:
 
 | Missing | Where it belongs |
 |---|---|
-| Release automation, signed artefacts, Maven Central and the Gradle Plugin Portal | M22 |
+| Publishing to Maven Central and the Gradle Plugin Portal — the automation exists and the signed bundle is verified locally, but nothing is published, because both destinations need accounts and keys. See [releasing.md](releasing.md) | M22 |
 | A thirty-day dogfood on a real external project | M22 |
 | Tier C corpora — parity runs against the fixtures here, not against real repositories | M4, M21 |
 | JUnit 4 and TestNG adapters behind the `jzap-testkit` SPI | M5 |
@@ -309,6 +311,12 @@ Two milestones were closed by measurement rather than by code, and the numbers a
 - **`TIMED_OUT` is still never cached.** Loop detection is deterministic, but the wall-clock
   backstop that catches blocking mutants is not, and the two are not distinguished at the point
   the cache is written. The verdict itself is reproducible; only its reuse is withheld.
+- **A diff-scoped Gradle task can report a stale scope.** `JzapTask` declares the ref names as
+  inputs but not the git state they resolve against, so committing the change that
+  `HEAD..-Local-` was selecting leaves every declared input unchanged while the correct scope
+  becomes empty -- and Gradle calls the task up to date. `--rerun-tasks` forces it. The task is
+  marked not cacheable partly for this reason; closing it means declaring the resolved commits
+  through a `ValueSource`, so that resolving them does not break the configuration cache.
 - **Renames are not followed** in git diffs. A renamed file's every line looks changed, which
   would flood a pull request with mutants for code nobody touched.
 - **Test classes are never mutated**, because only a module's `mutableCodePaths` are scanned.

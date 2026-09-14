@@ -17,6 +17,7 @@ import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.process.ExecOperations;
+import org.gradle.work.DisableCachingByDefault;
 
 import javax.inject.Inject;
 
@@ -33,10 +34,24 @@ import java.util.Set;
 /**
  * Writes a project model and runs the engine against it.
  *
- * <p>Declares its inputs and outputs so Gradle can skip it when nothing has changed. Full
- * build-cache relocatability waits on keying the report by content: it currently embeds phase
- * timings, which differ between runs by design.
+ * <p>Declares its inputs and outputs so Gradle can skip it when nothing has changed. That is
+ * up-to-date checking rather than build caching, and the two are worth keeping apart here,
+ * because this task is deliberately not cacheable for two reasons.
+ *
+ * <p>The reports embed phase timings, which differ between runs by design, so an output reused
+ * from another machine would present that machine's durations as this run's.
+ *
+ * <p>The reason that would actually bite is the second. A diff-scoped run takes its scope from the
+ * git repository, and the repository's state is not a declared input -- only the ref names are.
+ * Two runs with identical classes and an identical {@code from} can therefore need different
+ * scopes: commit the change that {@code HEAD..-Local-} was selecting, and the correct answer
+ * becomes "nothing in scope" while every declared input is unchanged. That already makes
+ * up-to-date checking optimistic for the diff task, and sharing outputs between machines would
+ * spread it further. Closing it means declaring the resolved commits as an input through a
+ * {@code ValueSource}, so that resolving them does not itself break the configuration cache.
  */
+@DisableCachingByDefault(because = "reports embed phase timings, and a diff-scoped run's scope "
+        + "depends on git state that is not a declared input")
 public abstract class JzapTask extends DefaultTask {
 
     /**

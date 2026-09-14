@@ -195,6 +195,12 @@ pip install -r mkdocs-requirements.txt
 mkdocs serve
 ```
 
+## Releasing
+
+Not published yet: the automation is in place and the signed Central bundle is verified, but both
+destinations need accounts and signing keys. [docs/releasing.md](docs/releasing.md) lists exactly
+what to create, and a `v*` tag does the rest.
+
 ## Licence
 
 Apache License 2.0 — see [LICENSE](LICENSE). Contributions are accepted under the same terms.

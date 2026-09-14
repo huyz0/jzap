@@ -75,5 +75,8 @@ val generateVersionResource = tasks.register("generateVersionResource") {
     }
 }
 
-sourceSets.named("main") { resources.srcDir(versionResource) }
-tasks.named("processResources") { dependsOn(generateVersionResource) }
+// The task rather than its directory, so every consumer of the main resources inherits the
+// dependency. Naming the directory made processResources need an explicit dependsOn, and left
+// sourcesJar -- added for publishing, and also a consumer -- reading the directory with no
+// dependency on what fills it.
+sourceSets.named("main") { resources.srcDir(generateVersionResource) }

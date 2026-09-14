@@ -5,7 +5,9 @@ plugins {
 
 allprojects {
     group = "io.github.huyz0"
-    version = "0.1.0-SNAPSHOT"
+    // Overridden by the release workflow from the tag: -PjzapVersion=0.1.0. A developer build
+    // stays a snapshot, so nothing here depends on remembering to set it back.
+    version = providers.gradleProperty("jzapVersion").getOrElse("0.1.0-SNAPSHOT")
 }
 
 subprojects {
@@ -37,6 +39,12 @@ subprojects {
         }
     }
 }
+
+/**
+ * Release publishing, kept in its own file because it is a self-contained concern and this one is
+ * already about the build itself. See that file's header for what goes where and why.
+ */
+apply(from = "gradle/publishing.gradle.kts")
 
 /**
  * The Maven plugin is built by Maven, not by this build.
