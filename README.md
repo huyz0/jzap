@@ -147,6 +147,13 @@ nobody noticed. See [docs/parity-and-benchmarks.md](docs/parity-and-benchmarks.m
 
 ## Documentation
 
+**[huyz0.github.io/jzap](https://huyz0.github.io/jzap/)** — the same documents as below, with
+navigation and search. The site is built from `docs/` rather than from a copy, so it cannot
+drift from what the repository maintains.
+
+- [docs/usage.md](docs/usage.md) — install, run, scope to a diff, read the report, wire up CI
+- [docs/mutators.md](docs/mutators.md) — the ten mutators, and every rule that suppresses a mutant
+- [docs/performance.md](docs/performance.md) — every published number, and how it was taken
 - [docs/status.md](docs/status.md) — what works today, what does not
 - [docs/prior-art.md](docs/prior-art.md) — the research this is built on
 - [docs/architecture.md](docs/architecture.md) — the build-tool-agnostic core
@@ -157,6 +164,13 @@ nobody noticed. See [docs/parity-and-benchmarks.md](docs/parity-and-benchmarks.m
 - [docs/compatibility.md](docs/compatibility.md) — JDK, build tool, framework and language versions
 - [docs/versioning.md](docs/versioning.md) — what counts as a breaking change
 - [docs/adr/](docs/adr/) — decision records
+
+To build it locally:
+
+```bash
+pip install -r mkdocs-requirements.txt
+mkdocs serve
+```
 
 ## Licence
 

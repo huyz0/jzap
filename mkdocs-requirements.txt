@@ -1,0 +1,3 @@
+# Pinned, because an unpinned docs build turns an upstream release into a broken site on a
+# commit that did not touch the docs.
+mkdocs-material==9.7.7

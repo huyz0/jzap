@@ -1,0 +1,110 @@
+# The documentation site, published to GitHub Pages by .github/workflows/docs.yml.
+#
+# docs_dir is the repository's own docs/ directory rather than a copy. Every page here is
+# also the page a reader gets by browsing the repository on GitHub, so the site cannot
+# drift from the documents the project actually maintains -- which is the failure mode of
+# a site with its own parallel copy of the same prose.
+site_name: jzap
+site_description: >-
+  Fast, diff-aware mutation testing for Java and Kotlin. Measured against PIT, and
+  verified against it mutant for mutant.
+site_url: https://huyz0.github.io/jzap/
+repo_url: https://github.com/huyz0/jzap
+repo_name: huyz0/jzap
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Huy Nguyen — Apache License 2.0
+
+docs_dir: docs
+site_dir: build/site
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Follow the system theme
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+
+nav:
+  - Home: README.md
+  - Usage:
+      - Getting started: usage.md
+      - Mutators and filters: mutators.md
+      - Troubleshooting: troubleshooting.md
+      - Compatibility: compatibility.md
+  - Performance:
+      - Measured results: performance.md
+      - Profiling notes: profiling.md
+      - Benchmark harness: parity-and-benchmarks.md
+  - Design:
+      - Architecture: architecture.md
+      - Prior art: prior-art.md
+      - Versioning: versioning.md
+      - "ADR 0001: Java, not Rust": adr/0001-implementation-language.md
+  - Project:
+      - Status: status.md
+      - Coverage: coverage.md
+      - Delivery plan: delivery-plan.md
+
+# A link that 404s in a published site is worse than a warning in a build log.
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn

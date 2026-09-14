@@ -215,12 +215,11 @@ reported reduction techniques at 0.98x and 0.72x — numbers that invited a conc
 reduction no longer paying, and that were entirely contention. Compare medians within one report,
 never across reports.
 
-Re-running after one recompiled class costs 4.6x a no-change run because any change to any class
+Re-running after one recompiled class costs 3.8x a no-change run because any change to any class
 invalidates the whole coverage map. That is deliberate: a changed production class can alter
-which lines its callers reach, so invalidating only that class's coverage would be unsound. It is also not the interesting number: the engine here is the
-deliberately slow reference implementation, with no schemata, no warm daemon, no cache and no
-parallelism. The diff run is 12x faster than jzap's own full run, which is the figure the
-product is actually about.
+which lines its callers reach, so invalidating only that class's coverage would be unsound. The
+recompiled method is one no test covers, so no verdict moves: that scenario measures how much the
+cache invalidates, not how much it recomputes.
 
 PIT is not timed on the diff scenario because its free scoping works at changed-*file*
 granularity and needs a git repository, so it would be doing a different amount of work.
@@ -228,10 +227,13 @@ Line-level scoping in the PIT ecosystem is arcmutate's, which is commercial and 
 here. The same is true of the cache scenarios: PIT has a history file, but it does not cache the
 coverage map, so the comparison would not be like for like.
 
-**On the plan's kill criteria.** The full-run criterion (>=2x PIT) is met: 4.4x at 20 threads,
-1.5x at one. The diff-run criterion (>=5x PIT on a warm PR-sized run) cannot be evaluated as
-written, because PIT's free tier has no line-level diff mode to compare against and arcmutate's
-is unmeasured. Against jzap's own full run, a warm diff run is 45x faster.
+**On the plan's kill criteria.** The full-run criterion (>=2x PIT) is met with room to spare:
+9.6x at one thread and 11.0x at twenty. The diff-run criterion (>=5x PIT on a warm PR-sized run)
+cannot be evaluated as written, because PIT's free tier has no line-level diff mode to compare
+against and arcmutate's is unmeasured. Against jzap's own full run, a diff run on this fixture is
+2.0x faster -- unimpressive, and for a reason worth stating: a full run here is already under
+three seconds, so fixed costs dominate whatever the diff removes. That ratio grows with the size
+of the repository, which is exactly what a fixture cannot demonstrate.
 
 The absolute numbers are machine-specific: this was run on a developer machine, not an
 isolated bench host, which is exactly the caveat docs/parity-and-benchmarks.md requires before
