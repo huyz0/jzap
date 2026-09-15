@@ -78,6 +78,9 @@ That runs [`.github/workflows/release.yml`](https://github.com/huyz0/jzap/blob/m
 4. Builds and signs the Central bundle.
 5. Uploads it to the Central Portal as a **staged** deployment.
 6. Publishes the Gradle plugin to the Plugin Portal.
+7. Creates the GitHub release, with the signed bundle attached, saying plainly that Central is
+   staged rather than live — between the release appearing and someone pressing publish the
+   coordinates do not resolve, and a note implying otherwise sends people to debug their own build.
 
 Every gate runs before anything leaves the machine, because **a published version cannot be
 withdrawn** — Central is immutable by design. The parity gate is part of that on purpose: shipping

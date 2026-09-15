@@ -29,6 +29,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # Only to create the GitHub release at the end. Everything before it reads.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -124,3 +127,46 @@ jobs:
         run: |
           ./gradlew :jzap-gradle:publishPlugins \
             -PjzapVersion=${{ steps.version.outputs.version }} --stacktrace
+
+      # Last, so it exists only for a release that actually got published. It says plainly that
+      # Central is staged rather than live, because between this appearing and someone pressing
+      # publish the coordinates do not resolve, and a release note that implies otherwise sends
+      # people to debug their own build.
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes=$(cat <<NOTES
+          Fast, diff-aware mutation testing for Java and Kotlin.
+
+          Documentation: https://huyz0.github.io/jzap/
+
+          ## Using it
+
+          Gradle:
+
+              plugins { id 'io.github.huyz0.jzap' version '${VERSION}' }
+
+          Maven:
+
+              <groupId>io.github.huyz0</groupId>
+              <artifactId>jzap-maven-plugin</artifactId>
+              <version>${VERSION}</version>
+
+          With a coding agent:
+
+              npx skills add huyz0/jzap
+
+          ## Availability
+
+          The Gradle plugin is live on the Plugin Portal. The engine modules are **staged** on
+          Maven Central and go live once the deployment is published there, which can take a few
+          minutes to appear afterwards. The Maven plugin is released separately.
+          NOTES
+          )
+          gh release create "v${VERSION}" \
+            --title "jzap ${VERSION}" \
+            --notes "$notes" \
+            build/central/jzap-${VERSION}-bundle.zip
