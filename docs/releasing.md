@@ -36,7 +36,7 @@ Central requires a detached signature on every artefact.
 ```bash
 gpg --full-generate-key                  # RSA 4096, no expiry or a long one
 gpg --list-secret-keys --keyid-format=long
-gpg --armor --export-secret-keys <KEYID> # this whole block is the SIGNING_KEY secret
+gpg --armor --export-secret-keys <KEYID> # this whole block is the GPG_SIGNING_KEY secret
 gpg --keyserver keys.openpgp.org --send-keys <KEYID>   # Central checks a public keyserver
 ```
 
@@ -55,10 +55,10 @@ In the repository's Settings → Secrets and variables → Actions:
 
 | Secret | What |
 |---|---|
-| `CENTRAL_USERNAME` | Central Portal user token username |
-| `CENTRAL_PASSWORD` | Central Portal user token password |
-| `SIGNING_KEY` | The ASCII-armoured private key, whole block including the header lines |
-| `SIGNING_PASSPHRASE` | That key's passphrase |
+| `MAVEN_CENTRAL_USERNAME` | Central Portal user token username |
+| `MAVEN_CENTRAL_PASSWORD` | Central Portal user token password |
+| `GPG_SIGNING_KEY` | The ASCII-armoured private key, whole block including the header lines |
+| `GPG_SIGNING_KEY_PASSWORD` | That key's passphrase |
 | `GRADLE_PUBLISH_KEY` | Gradle Plugin Portal API key |
 | `GRADLE_PUBLISH_SECRET` | Gradle Plugin Portal API secret |
 
@@ -73,9 +73,11 @@ That runs [`.github/workflows/release.yml`](https://github.com/huyz0/jzap/blob/m
 
 1. Runs `./gradlew build` — the whole suite, the module-boundary invariant and the coverage floor.
 2. Runs the PIT parity gate and the Maven plugin smoke test.
-3. Builds and signs the Central bundle.
-4. Uploads it to the Central Portal as a **staged** deployment.
-5. Publishes the Gradle plugin to the Plugin Portal.
+3. Validates the Gradle plugin against the Portal **without publishing it**, so a bad key or a
+   rejected plugin id fails before anything has been uploaded anywhere.
+4. Builds and signs the Central bundle.
+5. Uploads it to the Central Portal as a **staged** deployment.
+6. Publishes the Gradle plugin to the Plugin Portal.
 
 Every gate runs before anything leaves the machine, because **a published version cannot be
 withdrawn** — Central is immutable by design. The parity gate is part of that on purpose: shipping
@@ -94,8 +96,8 @@ Switching to `AUTOMATIC` in the workflow removes that step. Consider what it rem
 The bundle is the part worth checking by hand, and it needs no accounts:
 
 ```bash
-export SIGNING_KEY="$(gpg --armor --export-secret-keys <KEYID>)"
-export SIGNING_PASSPHRASE=...
+export GPG_SIGNING_KEY="$(gpg --armor --export-secret-keys <KEYID>)"
+export GPG_SIGNING_KEY_PASSWORD=...
 ./gradlew centralBundle -PjzapVersion=0.1.0
 unzip -l build/central/jzap-0.1.0-bundle.zip
 ```

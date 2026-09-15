@@ -18,7 +18,8 @@ mutant for mutant: `CONDITIONALS_BOUNDARY`, `INCREMENTS`, `INVERT_NEGS`, `MATH`,
 for uncommitted work and `-Empty-` for the empty tree) or from a unified diff with no
 repository present. Widening to whole changed classes with `--scope class`.
 
-**Reporters**: console, jzap's own JSON, the mutation-testing-elements schema, a
+**Reporters**: console, jzap's own JSON, the mutation-testing-elements schema, an
+`agent` reporter carrying only the findings for a coding agent to read, a
 self-contained HTML page, and per-survivor pull-request annotations.
 
 **A Gradle plugin.** `id 'io.github.huyz0.jzap'` adds `mutationTest` and `mutationTestDiff`:

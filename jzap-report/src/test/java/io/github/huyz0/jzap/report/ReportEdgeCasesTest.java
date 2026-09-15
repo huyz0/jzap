@@ -326,6 +326,34 @@ class ReportEdgeCasesTest {
                 "it has to be read before the findings are acted on: " + text);
     }
 
+    /**
+     * A hung mutant is detected, so it belongs with the findings rather than in the summary only.
+     *
+     * <p>It gets its own section rather than being folded in with survivors: nothing is wrong with
+     * the test, so the action is different -- the mutant looped, and what to do about it is decide
+     * whether that is a real hang or a loop guard that needs raising.
+     */
+    @Test
+    void theAgentReportCountsAndSectionsTimeouts(@TempDir Path dir) {
+        String text = agent(resultOf(List.of(
+                mutant(1, MutantStatus.KILLED),
+                mutant(2, MutantStatus.TIMED_OUT)), List.of()), dir);
+
+        assertTrue(text.contains("1 timed out"), "the headline has to mention them: " + text);
+        assertTrue(text.contains("timed-out:"), text);
+        assertTrue(text.contains("  2 MATH"), text);
+    }
+
+    @Test
+    void everyReporterAnswersToItsRegisteredId(@TempDir Path dir) {
+        Reporters reporters = new Reporters(new PrintStream(new ByteArrayOutputStream()));
+        for (String id : List.of("console", "json", "elements", "html", "annotations", "agent")) {
+            assertEquals(id, reporters.byId(id).id(),
+                    "a reporter must report the id it was registered under, or --reporters and "
+                            + "the report it produces disagree");
+        }
+    }
+
     @Test
     void theAgentReportNamesMutantsOutsideTheScore(@TempDir Path dir) {
         String text = agent(resultOf(List.of(

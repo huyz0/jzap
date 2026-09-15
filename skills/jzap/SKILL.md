@@ -132,7 +132,8 @@ most configuration problems are visible there.
 
 ## Cost
 
-Mutation testing runs the test suite many times. It is fast — measured at 8-10x PIT — but a full
+Mutation testing runs the test suite many times. It is fast — measured between 7.9x and 9.6x
+PIT depending on the machine — but a full
 run on a large module is still minutes. Do not run it speculatively:
 
 - Use `mutationTestDiff`, not `mutationTest`, unless a full picture was asked for.

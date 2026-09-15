@@ -36,8 +36,8 @@ val centralModules = listOf(
 /** Where every module publishes before being zipped. One directory, so the zip is the layout. */
 val stagingDir = layout.buildDirectory.dir("staging-deploy")
 
-val signingKey: String? = providers.environmentVariable("SIGNING_KEY").orNull
-val signingPassphrase: String? = providers.environmentVariable("SIGNING_PASSPHRASE").orNull
+val signingKey: String? = providers.environmentVariable("GPG_SIGNING_KEY").orNull
+val signingPassphrase: String? = providers.environmentVariable("GPG_SIGNING_KEY_PASSWORD").orNull
 
 configure(centralModules.map { project(":$it") }) {
     apply(plugin = "maven-publish")
@@ -149,9 +149,9 @@ tasks.register<Zip>("centralBundle") {
                 "-PjzapVersion=<release version>; see docs/releasing.md."
         }
         check(signingKey != null) {
-            "SIGNING_KEY is not set, so the bundle would be unsigned and the Central Portal " +
-                "would reject it after upload. Export SIGNING_KEY (an ASCII-armoured private " +
-                "key) and SIGNING_PASSPHRASE; see docs/releasing.md."
+            "GPG_SIGNING_KEY is not set, so the bundle would be unsigned and the Central Portal " +
+                "would reject it after upload. Export GPG_SIGNING_KEY (an ASCII-armoured private " +
+                "key) and GPG_SIGNING_KEY_PASSWORD; see docs/releasing.md."
         }
     }
 }

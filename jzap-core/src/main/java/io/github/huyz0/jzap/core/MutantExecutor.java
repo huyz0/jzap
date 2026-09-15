@@ -243,8 +243,13 @@ final class MutantExecutor {
         return (int) Math.min(requested, Math.min(byWork, byCores));
     }
 
-    /** Which bound actually applied, because "using 1 of 4" on its own invites a bug report. */
-    private static String why(int requested, long estimatedMillis, int cores, int workers) {
+    /**
+     * Which bound actually applied, because "using 1 of 4" on its own invites a bug report.
+     *
+     * <p>Package-private for the same reason {@link #workerCountFor} is: the branches depend on
+     * core counts and workloads no fixture in this repository reaches.
+     */
+    static String why(int requested, long estimatedMillis, int cores, int workers) {
         if (workers >= requested) {
             return "no bound applied";
         }

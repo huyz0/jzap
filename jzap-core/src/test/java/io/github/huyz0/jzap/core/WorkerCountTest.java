@@ -136,6 +136,31 @@ class WorkerCountTest {
         }
     }
 
+    // ------------------------------------------------- what the user is told about it
+
+    /**
+     * "using 1 of 4 thread(s)" with no reason invites a bug report, so each bound explains itself.
+     *
+     * <p>Asserted on the substance rather than the wording: which constraint was named, not how.
+     */
+    @Test
+    void theMessageNamesTheBoundThatApplied() {
+        String cores = MutantExecutor.why(20, AMPLE_WORK, 4, 3);
+        assertTrue(cores.contains("4 core(s)"), cores);
+        assertTrue(cores.contains("timeslice"),
+                "it has to say why more workers do not help, not just that there are 4: " + cores);
+
+        String work = MutantExecutor.why(20, 2 * PER_WORKER, AMPLE_CORES, 2);
+        assertTrue(work.contains("1000ms"), work);
+        assertTrue(work.contains("start cold"),
+                "the cost being amortised is the cold start: " + work);
+    }
+
+    @Test
+    void thereIsNoMessageWhenNothingWasTrimmed() {
+        assertEquals("no bound applied", MutantExecutor.why(4, AMPLE_WORK, AMPLE_CORES, 4));
+    }
+
     @Test
     void theSmallerBoundWins() {
         assertEquals(1, workers(20, PER_WORKER, AMPLE_CORES), "work binds");

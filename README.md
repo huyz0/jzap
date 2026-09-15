@@ -7,7 +7,8 @@ compiled code in small, realistic ways — flips a comparison, swaps an operator
 and reports every change your test suite fails to catch. Each survivor is a concrete gap.
 
 **Status: working, measured, and faster than PIT.** On the benchmark fixture, single-threaded and
-with the same mutators: **2.9s against PIT's 28.1s**, while analysing 40 *more* mutants. Verdicts
+with the same mutators: **2.9s against PIT's 28.1s** on a developer machine, and 8.5x the same
+comparison on a four-core CI runner, while analysing 40 *more* mutants. Verdicts
 agree with PIT on all 1051 mutants the two tools share. A warm cache takes a re-run to 0.42s, and a
 resident daemon takes it to 0.17s.
 

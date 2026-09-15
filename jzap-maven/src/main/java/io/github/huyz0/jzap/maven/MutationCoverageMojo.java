@@ -52,7 +52,13 @@ public class MutationCoverageMojo extends AbstractMojo {
     @Parameter(property = "jzap.reporters", defaultValue = "console,json,html")
     private String reporters;
 
-    /** Analysis threads. Zero means one per available processor. */
+    /**
+     * Analysis JVMs. Zero leaves it to the engine, which uses one.
+     *
+     * <p>Raise it for a slow or I/O-bound suite, where an extra JVM gains almost linearly. On
+     * fast CPU-bound tests it can cost more than it saves, so this is a measurement rather than
+     * an optimisation.
+     */
     @Parameter(property = "jzap.threads", defaultValue = "0")
     private int threads;
 
