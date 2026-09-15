@@ -446,6 +446,38 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
                 "the killing tests live in the other module:\n" + json);
     }
 
+    /**
+     * A module contributes to the aggregate through a {@code testFixtures(project(...))}
+     * dependency on a sibling that also applies the plugin.
+     *
+     * <p>Not a variant of {@link #theAggregateTaskLetsOneModulesTestsKillAnothersMutants}: that
+     * project's only cross-module edge is {@code app}'s {@code implementation project(':core')},
+     * which every module finishes configuring before any other module's test classpath needs it.
+     * A {@code testFixtures} dependency additionally needs {@code core}'s
+     * {@code java-test-fixtures} variant published, and {@code contributeToAggregate} used to
+     * resolve {@code app}'s {@code testRuntimeClasspath} -- which pulls that variant in --
+     * eagerly, inside {@code app}'s own {@code afterEvaluate}, before {@code core} was guaranteed
+     * to have published it: {@code IllegalStateException: Value for :core project components has
+     * not been calculated yet}, on every build regardless of whether {@code mutationTestAll} was
+     * even requested. Asserting on {@code tasks} rather than a mutation task is deliberate: the
+     * failure was in project <em>configuration</em>, so a task that does nothing else already
+     * reproduces it.
+     */
+    @Test
+    void aModuleDependingOnASiblingsTestFixturesStillConfigures() throws IOException {
+        Path multi = projectDir.resolve("fixtures-multi");
+        writeTestFixturesDependentProject(multi);
+
+        BuildResult result = GradleRunner.create()
+                .withProjectDir(multi.toFile())
+                .withPluginClasspath()
+                .withArguments("tasks", "--stacktrace")
+                .forwardOutput()
+                .build();
+
+        assertTrue(result.getOutput().contains("BUILD SUCCESSFUL"), result.getOutput());
+    }
+
     @Test
     void theAggregateTaskIsConfigurationCacheCompatible() throws IOException {
         Path multi = projectDir.resolve("multi");
@@ -539,6 +571,79 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
                     @Test
                     void leavesSmallValues() {
                         assertEquals(3, new Runner().limited(3));
+                    }
+                }
+                """);
+    }
+
+    /**
+     * Two modules where {@code app} depends on {@code core}'s test fixtures, not just its main
+     * output -- the shape {@link #aModuleDependingOnASiblingsTestFixturesStillConfigures} needs.
+     */
+    private void writeTestFixturesDependentProject(Path root) throws IOException {
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("settings.gradle"),
+                "rootProject.name = 'fixtures-multi'\ninclude 'core', 'app'\n");
+        Files.writeString(root.resolve("build.gradle"), """
+                plugins { id 'io.github.huyz0.jzap' apply false }
+
+                subprojects {
+                    apply plugin: 'java-library'
+                    apply plugin: 'java-test-fixtures'
+                    apply plugin: 'io.github.huyz0.jzap'
+                    repositories { mavenCentral() }
+                    dependencies {
+                        testImplementation 'org.junit.jupiter:junit-jupiter:5.14.0'
+                        testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.14.0'
+                    }
+                    test { useJUnitPlatform() }
+                    jzap { engineClasspath.setFrom(fileTree('%s') { include '*.jar' }) }
+                }
+                """.formatted(engineLib()));
+        Files.createDirectories(root.resolve("core"));
+        Files.createDirectories(root.resolve("app"));
+        Files.writeString(root.resolve("core/build.gradle"), "");
+        Files.writeString(root.resolve("app/build.gradle"),
+                "dependencies { testImplementation testFixtures(project(':core')) }\n");
+
+        Path core = root.resolve("core/src/main/java/core");
+        Files.createDirectories(core);
+        Files.writeString(core.resolve("Widget.java"), """
+                package core;
+
+                public class Widget {
+                    public int size() {
+                        return 1;
+                    }
+                }
+                """);
+
+        Path coreFixtures = root.resolve("core/src/testFixtures/java/core");
+        Files.createDirectories(coreFixtures);
+        Files.writeString(coreFixtures.resolve("WidgetFixture.java"), """
+                package core;
+
+                public class WidgetFixture {
+                    public static Widget aWidget() {
+                        return new Widget();
+                    }
+                }
+                """);
+
+        Path appTest = root.resolve("app/src/test/java/app");
+        Files.createDirectories(appTest);
+        Files.writeString(appTest.resolve("WidgetFixtureUsingTest.java"), """
+                package app;
+
+                import core.WidgetFixture;
+                import org.junit.jupiter.api.Test;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                class WidgetFixtureUsingTest {
+                    @Test
+                    void usesTheSiblingsFixture() {
+                        assertEquals(1, WidgetFixture.aWidget().size());
                     }
                 }
                 """);

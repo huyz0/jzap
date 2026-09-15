@@ -2,6 +2,7 @@ package io.github.huyz0.jzap.gradle;
 
 import org.gradle.api.Project;
 import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.provider.Provider;
 import org.gradle.testfixtures.ProjectBuilder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -45,12 +47,23 @@ class AggregateWiringTest {
         ((ProjectInternal) project).evaluate();
     }
 
-    /** The contributions gathered so far; absent and empty mean the same thing to a caller. */
+    /**
+     * The contributions gathered so far; absent and empty mean the same thing to a caller.
+     *
+     * <p>Stored as {@code Provider<String>}, not {@code String}: resolving {@code .getFiles()}
+     * here, at configuration time, is what threw "project components has not been calculated yet"
+     * against a sibling project this one depends on through {@code testFixtures(project(...))} --
+     * see the javadoc on {@code JzapPlugin.contributeToAggregate}. Resolving each provider here,
+     * in a unit test that evaluates every module up front, is fine; it is the production code path
+     * (evaluation interleaved with a sibling not yet ready) that resolving early cannot survive.
+     */
     @SuppressWarnings("unchecked")
     private static List<String> fragments(Project root) {
         var extra = root.getExtensions().getExtraProperties();
         return extra.has("jzap.aggregate.fragments")
-                ? (List<String>) extra.get("jzap.aggregate.fragments")
+                ? ((List<Provider<String>>) extra.get("jzap.aggregate.fragments")).stream()
+                        .map(Provider::get)
+                        .collect(Collectors.toList())
                 : List.of();
     }
 

@@ -12,6 +12,7 @@ import org.gradle.api.tasks.SourceSetContainer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Registers the {@code mutationTest} and {@code mutationTestDiff} tasks.
@@ -109,11 +110,13 @@ public class JzapPlugin implements Plugin<Project> {
             task.getReportDir().convention(
                     root.getLayout().getBuildDirectory().dir("reports/jzap-all"));
 
-            // Each project contributes its own description as it is configured, and the task
-            // reads the accumulated list lazily. Iterating other projects from here instead would
-            // fail outright inside an included build, and reaching across at execution time is
-            // what breaks the configuration cache.
-            task.getModuleFragments().set(root.provider(() -> fragments(root)));
+            // Each project queues its own description as a Provider while it is configured (see
+            // contributeToAggregate); this reads the accumulated queue, still lazily, resolving
+            // each entry only now -- which for an @Input property means at THIS task's own input
+            // snapshotting, inside its own execution-time lock, the same moment the single-module
+            // task already safely resolves a cross-project test classpath in configure() below.
+            task.getModuleFragments().set(root.provider(() ->
+                    fragments(root).stream().map(Provider::get).collect(Collectors.toList())));
             task.getAggregateInputs().from(root.provider(() -> inputs(root)));
 
             task.getEngineClasspath().setFrom(root.provider(() ->
@@ -146,6 +149,24 @@ public class JzapPlugin implements Plugin<Project> {
      *
      * <p>The file collections are handed over whole rather than resolved to paths, so the
      * aggregate task inherits the task dependencies that produce them.
+     *
+     * <p>⚠️ The actual {@code .getFiles()} resolution is queued as a {@link Provider} rather than
+     * run here, and that is load-bearing. {@code Project.afterEvaluate} fires once per project, as
+     * soon as <em>that</em> project finishes evaluating -- which can be, and in a module graph
+     * with a {@code testFixtures(project(...))} dependency routinely is, before a sibling project
+     * it depends on has registered its own components. Calling {@code .getFiles()} here, eagerly,
+     * throws {@code IllegalStateException: Value for :<sibling> project components has not been
+     * calculated yet}, in every build regardless of whether {@code mutationTestAll} is ever
+     * invoked, because this method runs unconditionally for every project that applies the
+     * plugin. {@code configured.provider(() -> ...)} defers that same call instead: the queue this
+     * adds to is read back, still lazily, only when {@code mutationTestAll}'s own {@code
+     * getModuleFragments()} is resolved -- i.e. at THAT task's input snapshotting, which is both
+     * after every project has finished evaluating and inside that task's own execution-time lock.
+     * (A {@code Gradle.projectsEvaluated} listener gets the first property but not the second: it
+     * runs outside any project's lock, and resolving a {@code Configuration} from it throws
+     * "attempted without an exclusive lock" instead -- measured, not assumed.) The queued
+     * {@code Provider<String>} still resolves to a plain, serializable {@code String} for the
+     * task's {@code @Input}, so the class javadoc's configuration-cache promise still holds.
      */
     private void contributeToAggregate(Project project, JzapExtension extension,
                                        SourceSet main, SourceSet test) {
@@ -157,23 +178,23 @@ public class JzapPlugin implements Plugin<Project> {
             Project root = configured.getRootProject();
             inputs(root).add(main.getOutput().getClassesDirs());
             inputs(root).add(test.getRuntimeClasspath());
-            fragments(root).add(JzapTask.moduleFragment(
+            fragments(root).add(configured.provider(() -> JzapTask.moduleFragment(
                     configured.getPath(),
                     main.getOutput().getClassesDirs().getFiles(),
                     main.getAllJava().getSrcDirs(),
                     test.getOutput().getClassesDirs().getFiles(),
                     test.getRuntimeClasspath().getFiles(),
-                    extension.getJvmArgs().getOrElse(List.of())));
+                    extension.getJvmArgs().getOrElse(List.of()))));
         });
     }
 
     @SuppressWarnings("unchecked")
-    private static List<String> fragments(Project root) {
+    private static List<Provider<String>> fragments(Project root) {
         ExtraPropertiesExtension extra = root.getExtensions().getExtraProperties();
         if (!extra.has(FRAGMENTS_KEY)) {
-            extra.set(FRAGMENTS_KEY, new ArrayList<String>());
+            extra.set(FRAGMENTS_KEY, new ArrayList<Provider<String>>());
         }
-        return (List<String>) extra.get(FRAGMENTS_KEY);
+        return (List<Provider<String>>) extra.get(FRAGMENTS_KEY);
     }
 
     @SuppressWarnings("unchecked")
