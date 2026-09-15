@@ -75,9 +75,40 @@ Maven has no reactor-wide equivalent yet.
   <version>0.1.0</version>
   <configuration>
     <threshold>80</threshold>
+    <!-- Required. The plugin forks the engine rather than running it in Maven's JVM, and it
+         does not resolve the engine itself yet, so it needs a path to the engine's jars. -->
+    <engineClasspath>${project.build.directory}/jzap-engine/*</engineClasspath>
   </configuration>
 </plugin>
 ```
+
+`engineClasspath` is a filesystem path, not a coordinate, so the engine has to be on disk first.
+Fetch it from Central into `target/jzap-engine` with the dependency plugin:
+
+```xml
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-dependency-plugin</artifactId>
+  <version>3.8.1</version>
+  <executions>
+    <execution>
+      <id>fetch-jzap-engine</id>
+      <phase>generate-test-resources</phase>
+      <goals><goal>copy-dependencies</goal></goals>
+      <configuration>
+        <outputDirectory>${project.build.directory}/jzap-engine</outputDirectory>
+        <includeGroupIds>io.github.huyz0</includeGroupIds>
+        <includeArtifactIds>jzap-cli</includeArtifactIds>
+        <includeTransitive>true</includeTransitive>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+```
+
+with `io.github.huyz0:jzap-cli:0.1.0` declared as a `provided` dependency so there is something to
+copy. That is more ceremony than it should be, and it is the first thing to fix after 0.1.0 —
+[Status](status.md) records it.
 
 ```bash
 mvn verify                      # bound to the verify phase

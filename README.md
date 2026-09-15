@@ -44,6 +44,9 @@ jzap {
   <version>0.1.0</version>
   <configuration>
     <threshold>80</threshold>
+    <!-- Required in 0.1.0: the plugin forks the engine and does not resolve it itself yet.
+         See docs/usage.md for how to put the engine's jars there. -->
+    <engineClasspath>${project.build.directory}/jzap-engine/*</engineClasspath>
   </configuration>
 </plugin>
 ```

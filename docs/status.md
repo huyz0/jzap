@@ -304,6 +304,11 @@ Two milestones were closed by measurement rather than by code, and the numbers a
   identical in the duration data the scheduler has. Raising `threads` is therefore a measurement
   the user has to make on their own suite. Sampling CPU utilisation during the coverage phase
   would let jzap decide this itself and is not built.
+- **The Maven plugin cannot resolve the engine itself.** `engineClasspath` is a required
+  filesystem path, so a Maven user has to copy `io.github.huyz0:jzap-cli` and its transitive jars
+  somewhere first, where the Gradle plugin just takes an `engineVersion` and resolves it. The
+  parameter was made required when there was no published engine to fetch; there is one now, and
+  making the mojo resolve it through Maven's own resolver is the first thing to fix after 0.1.0.
 - **Line-granularity coverage** selects more tests than necessary. Block granularity with
   exception-correct attribution is not built; the section above has the measurement that
   decided against it for now.
