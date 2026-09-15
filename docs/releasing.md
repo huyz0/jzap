@@ -128,6 +128,23 @@ Two guards will stop you rather than letting a bad bundle reach the Portal:
   carry a build timestamp, so the rejection would arrive after the upload. Pass `-PjzapVersion`.
 - **No signing key.** An unsigned bundle is rejected after upload too.
 
+## Known about the Plugin Portal
+
+**A plugin's first version is reviewed by hand.** `publishPlugins` succeeds and reports it:
+*"Your new plugin has been submitted for approval by Gradle engineers. The request should be
+processed within the next few days, at which point you will be contacted via email."* Until that
+completes the plugin id does not resolve and its page returns 400, so a release note claiming the
+plugin is live is wrong for the first version — the workflow's generated notes say this.
+
+**Configuration-cache compatibility is not declared**, and should be. The Portal asks for it on
+publish, and jzap qualifies: `JzapPluginTest` runs `mutationTestAll --configuration-cache` and
+fails on any problem. The obstacle is mechanical rather than a question of fact — the
+`compatibility { features { configurationCache = true } }` block documented for
+com.gradle.plugin-publish 2.1.0+ does not resolve on 2.2.1 here, and applying
+`org.gradle.plugin-compatibility` by name registers no extension either, checked by listing the
+project's extensions rather than inferred. Worth another look before the next release; an
+undeclared feature reads on the Portal as unsupported.
+
 ## The Maven plugin
 
 Built by Maven, so it is released by Maven. Publishing lives in a `release` profile, so an

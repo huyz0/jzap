@@ -167,10 +167,15 @@ jobs:
 
           ## Availability
 
-          The Gradle plugin is live on the Plugin Portal. The engine modules are published to
-          Maven Central, which validates asynchronously: allow a few minutes before they resolve
-          from repo1, and longer before they are searchable. The Maven plugin is released
-          separately.
+          The engine modules are published to Maven Central, which validates asynchronously:
+          allow a few minutes before they resolve from repo1, and longer before they are
+          searchable.
+
+          The Gradle plugin is published to the Plugin Portal. A plugin's *first* version is
+          reviewed by hand there and does not resolve until that completes, which the publish
+          step's own output says when it applies -- check the log for this run.
+
+          The Maven plugin is released separately and is not part of this tag.
           NOTES
           )
           gh release create "v${VERSION}" \
