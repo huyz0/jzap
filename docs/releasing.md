@@ -121,15 +121,35 @@ Two guards will stop you rather than letting a bad bundle reach the Portal:
 
 ## The Maven plugin
 
-Built by Maven, so it is released by Maven:
+Built by Maven, so it is released by Maven. Publishing lives in a `release` profile, so an
+ordinary `mvn install` needs neither a signing key nor network access to Sonatype:
 
 ```bash
 cd jzap-maven
-mvn -B clean deploy -DskipTests   # needs a <server> for Central and gpg configured in settings.xml
+mvn -B -Prelease deploy -DskipTests
 ```
 
-Not yet part of the release workflow. Its version tracks the engine's but is set in
-`jzap-maven/pom.xml` by hand, which is the next thing to automate here.
+That attaches sources and javadoc, signs everything, and stages the deployment on the Central
+Portal with `autoPublish=false` — the same staged-not-released choice the Gradle side makes, and
+for the same reason. It reads the `central` server and the gpg passphrase from `~/.m2/settings.xml`.
+
+Rehearse it without publishing:
+
+```bash
+mvn -B -Prelease verify -DskipTests
+ls target/*.asc          # jar, sources, javadoc and pom signatures
+```
+
+Two things this does not yet do, both deliberate rather than overlooked:
+
+- **It is not in the release workflow.** A `v*` tag publishes the engine and the Gradle plugin;
+  the Maven plugin is a separate command. Wiring it in means giving the workflow a Maven step with
+  its own signing setup, and it is worth doing once the two have released together at least once
+  by hand.
+- **Its version is set by hand** in `jzap-maven/pom.xml` rather than derived from the tag. The
+  smoke test reads that version from the POM rather than pinning its own copy, so a bump cannot
+  leave the test exercising a coordinate that is no longer built — which is exactly what happened
+  the first time the version moved.
 
 ## After a release
 

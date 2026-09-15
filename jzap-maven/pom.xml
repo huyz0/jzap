@@ -11,11 +11,34 @@
 
   <groupId>io.github.huyz0</groupId>
   <artifactId>jzap-maven-plugin</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
   <packaging>maven-plugin</packaging>
 
   <name>jzap Maven plugin</name>
   <description>Fast, diff-aware mutation testing for Java and Kotlin.</description>
+  <url>https://github.com/huyz0/jzap</url>
+  <inceptionYear>2026</inceptionYear>
+
+  <licenses>
+    <license>
+      <name>The Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>huyz0</id>
+      <name>Huy Nguyen</name>
+      <url>https://github.com/huyz0</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <url>https://github.com/huyz0/jzap</url>
+    <connection>scm:git:https://github.com/huyz0/jzap.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/huyz0/jzap.git</developerConnection>
+  </scm>
 
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
@@ -56,4 +79,85 @@
       </plugin>
     </plugins>
   </build>
+
+  <!--
+    Releasing is opt-in, so an ordinary `mvn install` needs neither a signing key nor network
+    access to Sonatype. `mvn -Prelease deploy` is what publishes; see docs/releasing.md.
+
+    Central requires sources, javadoc and a detached signature for every artefact, which is why
+    all three plugins are here rather than just the deployer.
+  -->
+  <profiles>
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.4.0</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals><goal>jar-no-fork</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.12.0</version>
+            <configuration>
+              <!-- A missing @param on a mojo field must not fail a release. Javadoc is a
+                   required artefact here rather than a checked one. -->
+              <doclint>none</doclint>
+              <quiet>true</quiet>
+            </configuration>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals><goal>jar</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.8</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals><goal>sign</goal></goals>
+                <configuration>
+                  <!-- Non-interactive: the passphrase comes from settings.xml or -Dgpg.passphrase
+                       rather than from a prompt no CI can answer. -->
+                  <gpgArguments>
+                    <arg>--pinentry-mode</arg>
+                    <arg>loopback</arg>
+                  </gpgArguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.11.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <!-- Matches the <server><id> in settings.xml. -->
+              <publishingServerId>central</publishingServerId>
+              <!-- Staged, not released. The same choice the Gradle side makes, and for the same
+                   reason: Central is immutable, so the last step is a person. -->
+              <autoPublish>false</autoPublish>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

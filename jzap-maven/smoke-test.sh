@@ -9,6 +9,14 @@ ENGINE_LIB="${1:?usage: smoke-test.sh <engine lib dir>}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# Read from the POM rather than pinned here. Pinning meant a version bump left this testing a
+# coordinate that was no longer built, and the failure surfaced as "plugin not found" rather than
+# as the stale reference it was.
+POM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pom.xml"
+PLUGIN_VERSION="$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' "$POM" | head -1)"
+[ -n "$PLUGIN_VERSION" ] || { echo "FAIL: could not read the plugin version from $POM" >&2; exit 1; }
+echo "jzap-maven-plugin version under test: $PLUGIN_VERSION"
+
 CLASSPATH="$(ls "$ENGINE_LIB"/*.jar | tr '\n' ':' | sed 's/:$//')"
 
 mkdir -p "$WORK/src/main/java/demo" "$WORK/src/test/java/demo"
@@ -36,7 +44,7 @@ cat > "$WORK/pom.xml" <<EOF
   <build><plugins><plugin>
     <groupId>io.github.huyz0</groupId>
     <artifactId>jzap-maven-plugin</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>$PLUGIN_VERSION</version>
     <configuration>
       <engineClasspath>$CLASSPATH</engineClasspath>
       <reporters>console,json</reporters>
@@ -79,7 +87,7 @@ class FeesTest {
 EOF
 
 cd "$WORK"
-mvn -q -B test-compile io.github.huyz0:jzap-maven-plugin:0.1.0-SNAPSHOT:mutationCoverage > "$WORK/out.txt" 2>&1 || {
+mvn -q -B test-compile io.github.huyz0:jzap-maven-plugin:$PLUGIN_VERSION:mutationCoverage > "$WORK/out.txt" 2>&1 || {
     cat "$WORK/out.txt"; echo "FAIL: the Maven plugin did not complete"; exit 1;
 }
 
