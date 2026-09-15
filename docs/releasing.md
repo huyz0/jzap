@@ -76,23 +76,29 @@ That runs [`.github/workflows/release.yml`](https://github.com/huyz0/jzap/blob/m
 3. Validates the Gradle plugin against the Portal **without publishing it**, so a bad key or a
    rejected plugin id fails before anything has been uploaded anywhere.
 4. Builds and signs the Central bundle.
-5. Uploads it to the Central Portal as a **staged** deployment.
+5. Uploads it to the Central Portal, which validates and then **publishes automatically**.
 6. Publishes the Gradle plugin to the Plugin Portal.
-7. Creates the GitHub release, with the signed bundle attached, saying plainly that Central is
-   staged rather than live — between the release appearing and someone pressing publish the
-   coordinates do not resolve, and a note implying otherwise sends people to debug their own build.
+7. Creates the GitHub release with the signed bundle attached. The notes say Central validates
+   asynchronously, because for a few minutes after the page appears the coordinates still do not
+   resolve, and a note implying otherwise sends people to debug their own build.
 
 Every gate runs before anything leaves the machine, because **a published version cannot be
 withdrawn** — Central is immutable by design. The parity gate is part of that on purpose: shipping
 a build whose verdicts disagree with PIT would be shipping a wrong answer confidently.
 
-### The last step is yours
+### Nothing to press
 
-The Central upload is `publishingType=USER_MANAGED`, so it validates and stages but does not go
-live. Open [central.sonatype.com/publishing/deployments](https://central.sonatype.com/publishing/deployments)
-and press publish. It costs one click and it is the only remaining chance to not publish.
+The Central upload is `publishingType=AUTOMATIC`, so a green run publishes without further input.
+Watch it at [central.sonatype.com/publishing/deployments](https://central.sonatype.com/publishing/deployments);
+validation is asynchronous and **can still fail after the workflow step reports success**, so a
+green run means uploaded and accepted rather than definitely live.
 
-Switching to `AUTOMATIC` in the workflow removes that step. Consider what it removes with it.
+What stands in for a human pause is everything that runs before the upload: the whole suite, the
+coverage floor, the PIT parity oracle, the Maven smoke test and a plugin validation against the
+Portal. A person clicking publish on a deployment they had not inspected was never really a
+check — but it did mean a bad release could be abandoned rather than published. **Pushing the tag
+is now the decision to publish**, and Central is immutable, so the way to undo a mistake is to
+release the fix as a new version.
 
 ## Dry-running it locally
 
@@ -132,9 +138,10 @@ cd jzap-maven
 mvn -B -Prelease deploy -DskipTests
 ```
 
-That attaches sources and javadoc, signs everything, and stages the deployment on the Central
-Portal with `autoPublish=false` — the same staged-not-released choice the Gradle side makes, and
-for the same reason. It reads the `central` server and the gpg passphrase from `~/.m2/settings.xml`.
+That attaches sources and javadoc, signs everything, and publishes to the Central Portal —
+`autoPublish=true` with `waitUntil=PUBLISHED`, so the command does not return until Central has
+actually published rather than merely accepted the upload. It reads the `central` server and the
+gpg passphrase from `~/.m2/settings.xml`.
 
 Rehearse it without publishing:
 

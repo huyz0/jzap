@@ -151,9 +151,12 @@
             <configuration>
               <!-- Matches the <server><id> in settings.xml. -->
               <publishingServerId>central</publishingServerId>
-              <!-- Staged, not released. The same choice the Gradle side makes, and for the same
-                   reason: Central is immutable, so the last step is a person. -->
-              <autoPublish>false</autoPublish>
+              <!-- Released without waiting, the same choice the Gradle side makes. The smoke
+                   test against a real Maven build is what stands in for the pause. -->
+              <autoPublish>true</autoPublish>
+              <!-- Otherwise the build returns as soon as the bundle is accepted, and a validation
+                   failure minutes later has nothing left watching for it. -->
+              <waitUntil>PUBLISHED</waitUntil>
             </configuration>
           </plugin>
         </plugins>

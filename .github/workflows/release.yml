@@ -8,9 +8,10 @@
 # be withdrawn -- Maven Central is immutable by design. The parity gate is part of that: shipping a
 # version whose verdicts disagree with PIT would be shipping a wrong answer confidently.
 #
-# The Central deployment is left USER_MANAGED rather than AUTOMATIC, so the last step is a human
-# looking at the staged deployment in the Portal and pressing publish. The cost is one click; the
-# thing it buys is the only remaining chance to not publish.
+# The Central deployment is AUTOMATIC, so a green run publishes without further input. What
+# stands in for the missing pause is everything above it: the suite, the coverage floor, the PIT
+# parity oracle, the Maven smoke test, and a plugin validation against the Portal -- all before
+# anything is uploaded. Central is immutable, so a tag is the decision to publish.
 name: release
 
 on:
@@ -69,8 +70,9 @@ jobs:
 
       # Before anything is uploaded anywhere. This checks the Portal credentials and the plugin's
       # metadata without publishing, so a bad key or a rejected id fails here rather than after
-      # Central already holds a staged bundle -- which would leave a release half-done, with one
-      # destination to clean up by hand and the other not revocable at all.
+      # Central has already taken the bundle -- and with AUTOMATIC publishing there is nothing
+      # left to clean up by hand, because by then it is released. Neither destination is
+      # revocable, so the only place to catch this is before the upload.
       - name: Validate the Gradle plugin without publishing it
         env:
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
@@ -105,12 +107,15 @@ jobs:
           set -euo pipefail
           bundle="build/central/jzap-${VERSION}-bundle.zip"
           token=$(printf '%s:%s' "$MAVEN_CENTRAL_USERNAME" "$MAVEN_CENTRAL_PASSWORD" | base64 -w0)
-          # USER_MANAGED: validated and staged, then published by hand from the Portal.
+          # AUTOMATIC: Central validates and then releases without waiting for anyone. The gates
+          # above are what stands in for the pause -- the full suite, the parity oracle, the Maven
+          # smoke test and a plugin validation, all before a single byte is uploaded. A person
+          # clicking publish on a deployment they have not inspected was never really a check.
           status=$(curl -sS -o response.txt -w '%{http_code}' \
             -X POST \
             -H "Authorization: Bearer $token" \
             -F "bundle=@${bundle}" \
-            "https://central.sonatype.com/api/v1/publisher/upload?name=jzap-${VERSION}&publishingType=USER_MANAGED")
+            "https://central.sonatype.com/api/v1/publisher/upload?name=jzap-${VERSION}&publishingType=AUTOMATIC")
           echo "HTTP $status"
           cat response.txt
           if [ "$status" != "201" ]; then
@@ -118,7 +123,8 @@ jobs:
             exit 1
           fi
           echo
-          echo "::notice::Deployment staged. Publish it at https://central.sonatype.com/publishing/deployments"
+          echo "::notice::Uploaded and releasing automatically. Progress: https://central.sonatype.com/publishing/deployments"
+          echo "::notice::Validation takes a few minutes, and Central can still reject it after this step reports success"
 
       - name: Publish the Gradle plugin
         env:
@@ -128,10 +134,10 @@ jobs:
           ./gradlew :jzap-gradle:publishPlugins \
             -PjzapVersion=${{ steps.version.outputs.version }} --stacktrace
 
-      # Last, so it exists only for a release that actually got published. It says plainly that
-      # Central is staged rather than live, because between this appearing and someone pressing
-      # publish the coordinates do not resolve, and a release note that implies otherwise sends
-      # people to debug their own build.
+      # Last, so it exists only for a release that actually got published. Central validates
+      # asynchronously and takes a few minutes to become resolvable, which the notes say -- a
+      # release page implying the coordinates work immediately sends people to debug their own
+      # build.
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -161,9 +167,10 @@ jobs:
 
           ## Availability
 
-          The Gradle plugin is live on the Plugin Portal. The engine modules are **staged** on
-          Maven Central and go live once the deployment is published there, which can take a few
-          minutes to appear afterwards. The Maven plugin is released separately.
+          The Gradle plugin is live on the Plugin Portal. The engine modules are published to
+          Maven Central, which validates asynchronously: allow a few minutes before they resolve
+          from repo1, and longer before they are searchable. The Maven plugin is released
+          separately.
           NOTES
           )
           gh release create "v${VERSION}" \
